@@ -1,10 +1,11 @@
-import gleam/list
 import gleam/int
+import gleam/list
 import gleam/string
 import header.{
-  type Pos, type Syntax, IdentSyntax, IntersectionTypeSyntax, LambdaSyntax,
-  ManyMode, NatSyntax, NatTypeSyntax, PiSyntax, Pos, SortSyntax, TypeSort,
-  type BinderMode,AppSyntax, ZeroMode, TypeMode
+  type BinderMode, type Pos, type Syntax, type SyntaxParam, AppSyntax,
+  IdentSyntax, ImmedAppSyntax, IntersectionTypeSyntax, LambdaSyntax, ManyMode,
+  NatSyntax, NatTypeSyntax, PiSyntax, Pos, SortSyntax, SyntaxParam, TypeMode,
+  TypeSort, ZeroMode,
 }
 
 pub type Parser(a) {
@@ -213,6 +214,17 @@ pub fn ident_string() -> Parser(String) {
   return(first <> string.concat(rest))
 }
 
+pub fn pattern_string() -> Parser(String) {
+  either(ident_string(), {
+    use _ <- do(char("_"))
+    use res <- do(maybe(ident_string()))
+    case res {
+      Ok(s) -> return("_" <> s)
+      Error(_) -> return("_")
+    }
+  })
+}
+
 pub fn ident() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use s <- do(ident_string())
@@ -243,7 +255,7 @@ pub fn zero_or_type_binder() -> Parser(Syntax) {
   use res <- do(either(char("<"), char("{")))
   use <- commit()
   use <- ws()
-  use x <- do(ident_string())
+  use x <- do(pattern_string())
   use <- ws()
   use _ <- do(char(":"))
   use t <- do(lazy(expr))
@@ -274,7 +286,7 @@ pub fn parens() -> Parser(Syntax) {
   use <- ws()
   use res <- do(
     maybe({
-      use x <- do(ident_string())
+      use x <- do(pattern_string())
       use <- ws()
       use _ <- do(char(":"))
       return(x)
@@ -312,6 +324,58 @@ pub fn parens() -> Parser(Syntax) {
   }
 }
 
+pub fn parse_param() -> Parser(SyntaxParam) {
+  use <- ws()
+  use res <- do(any_of([char("("), char("{"), char("<")]))
+  use <- ws()
+  use <- commit()
+  use x <- do(pattern_string())
+  use <- ws()
+  use _ <- do(char(":"))
+  use t <- do(lazy(expr))
+  case res {
+    "(" -> {
+      use _ <- do(char(")"))
+      return(SyntaxParam(ManyMode, x, t))
+    }
+    "{" -> {
+      use _ <- do(char("}"))
+      return(SyntaxParam(ZeroMode, x, t))
+    }
+    "<" -> {
+      use _ <- do(char(">"))
+      return(SyntaxParam(TypeMode, x, t))
+    }
+    _ -> panic as "impossible param mode"
+  }
+}
+
+fn build_pi(pos: Pos, params: List(SyntaxParam), rett: Syntax) -> Syntax {
+  case params {
+    [] -> rett
+    [param, ..rest] ->
+      PiSyntax(param.mode, param.name, param.ty, build_pi(pos, rest, rett), pos)
+  }
+}
+
+pub fn let_binding() -> Parser(Syntax) {
+  use pos <- do(get_pos())
+  use _ <- do(keyword("let"))
+  use <- ws()
+  use <- commit()
+  use x <- do(pattern_string())
+  use <- ws()
+  use params <- do(many0(parse_param()))
+  use <- ws()
+  use _ <- do(char(":"))
+  use t <- do(lazy(expr))
+  use _ <- do(char("="))
+  use v <- do(lazy(expr))
+  use _ <- do(keyword("in"))
+  use e <- do(lazy(expr))
+  return(ImmedAppSyntax(x, params, build_pi(pos, params, t), v, e, pos))
+}
+
 pub type Suffix {
   AppSuffix(BinderMode, Syntax, pos: Pos)
 }
@@ -319,46 +383,57 @@ pub type Suffix {
 pub fn expr() -> Parser(Syntax) {
   use <- ws()
   use e <- do(label(
-    any_of([nat_type(), type_type(), ident(), nat(), parens(), zero_or_type_binder()]),
+    any_of([
+      nat_type(),
+      type_type(),
+      nat(),
+      parens(),
+      zero_or_type_binder(),
+      let_binding(),
+      ident(),
+    ]),
     "expression",
   ))
   use <- ws()
-  use suffices <- do(many0({
-    use <- ws()
-    any_of([
-      {
-        use pos <- do(get_pos())
-        use _ <- do(char("("))
-        use <- commit()
-        use arg <- do(lazy(expr))
-        use _ <- do(char(")"))
-        return(AppSuffix(ManyMode, arg, pos))
-      },
-      {
-        use pos <- do(get_pos())
-        use _ <- do(char("{"))
-        use <- commit()
-        use arg <- do(lazy(expr))
-        use _ <- do(char("}"))
-        return(AppSuffix(ZeroMode, arg, pos))
-      },
-      {
-        use pos <- do(get_pos())
-        use _ <- do(char("<"))
-        use <- commit()
-        use arg <- do(lazy(expr))
-        use _ <- do(char(">"))
-        return(AppSuffix(TypeMode, arg, pos))
-      }
-    ])
-  }))
+  use suffices <- do(
+    many0({
+      use <- ws()
+      any_of([
+        {
+          use pos <- do(get_pos())
+          use _ <- do(char("("))
+          use <- commit()
+          use arg <- do(lazy(expr))
+          use _ <- do(char(")"))
+          return(AppSuffix(ManyMode, arg, pos))
+        },
+        {
+          use pos <- do(get_pos())
+          use _ <- do(char("{"))
+          use <- commit()
+          use arg <- do(lazy(expr))
+          use _ <- do(char("}"))
+          return(AppSuffix(ZeroMode, arg, pos))
+        },
+        {
+          use pos <- do(get_pos())
+          use _ <- do(char("<"))
+          use <- commit()
+          use arg <- do(lazy(expr))
+          use _ <- do(char(">"))
+          return(AppSuffix(TypeMode, arg, pos))
+        },
+      ])
+    }),
+  )
   let e = case suffices {
     [] -> e
-    _ -> list.fold(suffices, e, fn(ex, suffix) {
-      case suffix {
-        AppSuffix(mode, arg, pos) -> AppSyntax(mode, ex, arg, pos)
-      }
-    })
+    _ ->
+      list.fold(suffices, e, fn(ex, suffix) {
+        case suffix {
+          AppSuffix(mode, arg, pos) -> AppSyntax(mode, ex, arg, pos)
+        }
+      })
   }
   use <- ws()
   return(e)

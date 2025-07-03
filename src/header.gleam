@@ -84,11 +84,10 @@ pub fn pretty_syntax(s: Syntax) -> String {
     ImmedAppSyntax(x, params, t, v, scope, _) ->
       "let "
       <> x
-      <> "("
-      <> string.join(list.map(params, pretty_syntax_param), ", ")
-      <> "): "
+      <> string.concat(list.map(params, pretty_syntax_param))
+      <> ": ("
       <> pretty_syntax(t)
-      <> " = "
+      <> ") = "
       <> pretty_syntax(v)
       <> " in "
       <> pretty_syntax(scope)
