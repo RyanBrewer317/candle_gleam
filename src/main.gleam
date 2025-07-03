@@ -1,6 +1,10 @@
+import header
 import parser
 
 pub fn main() -> Nil {
-  let _ = echo parser.parse("77h_1Ell*o world", parser.expr())
+  let code = "(f: (n: Nat)=>Nat) -> f(3)"
+  echo code
+  let _ =
+    echo parser.parse(code, parser.map(parser.expr(), header.pretty_syntax))
   Nil
 }
