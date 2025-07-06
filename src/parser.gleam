@@ -358,6 +358,20 @@ fn build_pi(pos: Pos, params: List(SyntaxParam), rett: Syntax) -> Syntax {
   }
 }
 
+fn build_lambda(pos: Pos, params: List(SyntaxParam), body: Syntax) -> Syntax {
+  case params {
+    [] -> body
+    [param, ..rest] ->
+      LambdaSyntax(
+        param.mode,
+        param.name,
+        param.ty,
+        build_lambda(pos, rest, body),
+        pos,
+      )
+  }
+}
+
 pub fn let_binding() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use _ <- do(keyword("let"))
@@ -373,7 +387,13 @@ pub fn let_binding() -> Parser(Syntax) {
   use v <- do(lazy(expr))
   use _ <- do(keyword("in"))
   use e <- do(lazy(expr))
-  return(ImmedAppSyntax(x, params, build_pi(pos, params, t), v, e, pos))
+  return(ImmedAppSyntax(
+    x,
+    build_pi(pos, params, t),
+    v,
+    build_lambda(pos, params, e),
+    pos,
+  ))
 }
 
 pub type Suffix {

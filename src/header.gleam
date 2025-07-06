@@ -1,6 +1,4 @@
 import gleam/int
-import gleam/list
-import gleam/string
 
 pub type Pretty(a) {
   Pretty(go: fn(a) -> String)
@@ -45,7 +43,7 @@ pub type Syntax {
   LambdaSyntax(BinderMode, String, Syntax, Syntax, pos: Pos)
   IdentSyntax(String, pos: Pos)
   AppSyntax(BinderMode, Syntax, Syntax, pos: Pos)
-  ImmedAppSyntax(String, List(SyntaxParam), Syntax, Syntax, Syntax, pos: Pos)
+  ImmedAppSyntax(String, Syntax, Syntax, Syntax, pos: Pos)
   NatSyntax(Int, pos: Pos)
   NatTypeSyntax(pos: Pos)
   SortSyntax(Sort, pos: Pos)
@@ -72,22 +70,12 @@ pub fn pretty_syntax(s: Syntax) -> String {
       "(" <> pretty_syntax(foo) <> "){" <> pretty_syntax(bar) <> "}"
     AppSyntax(TypeMode, foo, bar, _) ->
       "(" <> pretty_syntax(foo) <> ")<" <> pretty_syntax(bar) <> ">"
-    ImmedAppSyntax(x, [], t, v, scope, _) ->
+    ImmedAppSyntax(x, t, v, scope, _) ->
       "let "
       <> x
       <> ": "
       <> pretty_syntax(t)
       <> " = "
-      <> pretty_syntax(v)
-      <> " in "
-      <> pretty_syntax(scope)
-    ImmedAppSyntax(x, params, t, v, scope, _) ->
-      "let "
-      <> x
-      <> string.concat(list.map(params, pretty_syntax_param))
-      <> ": ("
-      <> pretty_syntax(t)
-      <> ") = "
       <> pretty_syntax(v)
       <> " in "
       <> pretty_syntax(scope)
@@ -147,11 +135,24 @@ pub fn pretty_syntax(s: Syntax) -> String {
 
 pub const pr_syntax = Pretty(pretty_syntax)
 
+pub type Index {
+  Index(int: Int)
+}
+
+pub type Level {
+  Level(int: Int)
+}
+
+pub fn lvl_to_idx(size: Level, lvl: Level) -> Index {
+  Index(size.int - lvl.int - 1)
+}
+
 pub type Binder {
   Lambda(mode: BinderMode)
   Pi(mode: BinderMode)
+  // invariant: InterT.mode is always ZeroMode
   InterT(mode: BinderMode)
-  // always ZeroMode
+  Let(mode: BinderMode, val: Term)
 }
 
 pub type Ctor0 {
@@ -183,7 +184,7 @@ pub type Ctor5 {
 }
 
 pub type Term {
-  Ident(BinderMode, Sort, Int, String, pos: Pos)
+  Ident(BinderMode, Sort, Index, String, pos: Pos)
   Binder(Binder, String, Term, Term, pos: Pos)
   Ctor0(Ctor0, pos: Pos)
   Ctor1(Ctor1, Term, pos: Pos)
@@ -209,6 +210,13 @@ pub fn pretty_term(term: Term) -> String {
       pretty_param(mode, x, t) <> "=> " <> pretty_term(u)
     Binder(InterT(mode), x, t, u, _) ->
       pretty_param(mode, x, t) <> "& " <> pretty_term(u)
+    Binder(Let(mode, v), x, t, e, _) ->
+      "let "
+      <> pretty_param(mode, x, t)
+      <> " = "
+      <> pretty_term(v)
+      <> " in "
+      <> pretty_term(e)
     Ctor0(Diamond, _) -> "Diamond"
     Ctor0(Sort(TypeSort), _) -> "Type"
     Ctor0(Sort(KindSort), _) -> "Kind"
