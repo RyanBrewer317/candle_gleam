@@ -59,6 +59,28 @@ pub type Syntax {
   ExFalsoSyntax(Syntax, pos: Pos)
 }
 
+pub fn get_pos(s: Syntax) -> Pos {
+  case s {
+    LambdaSyntax(_, _, _, _, pos) -> pos
+    IdentSyntax(_, pos) -> pos
+    AppSyntax(_, _, _, pos) -> pos
+    ImmedAppSyntax(_, _, _, _, pos) -> pos
+    NatSyntax(_, pos) -> pos
+    NatTypeSyntax(pos) -> pos
+    SortSyntax(_, pos) -> pos
+    PiSyntax(_, _, _, _, pos) -> pos
+    JSyntax(_, _, _, _, _, pos) -> pos
+    IntersectionTypeSyntax(_, _, _, pos) -> pos
+    IntersectionSyntax(_, _, _, pos) -> pos
+    FstSyntax(_, pos) -> pos
+    SndSyntax(_, pos) -> pos
+    EqSyntax(_, _, _, pos) -> pos
+    ReflSyntax(_, _, pos) -> pos
+    CastSyntax(_, _, _, pos) -> pos
+    ExFalsoSyntax(_, pos) -> pos
+  }
+}
+
 pub fn pretty_syntax(s: Syntax) -> String {
   case s {
     LambdaSyntax(mode, x, t, e, _) ->
@@ -206,6 +228,8 @@ pub fn pretty_term(term: Term) -> String {
     Ident(_, _, _, s, _) -> s
     Binder(Lambda(mode), x, t, e, _) ->
       pretty_param(mode, x, t) <> "-> " <> pretty_term(e)
+    Binder(Pi(ManyMode), "_", t, u, _) ->
+      "(" <> pretty_term(t) <> ")=>" <> pretty_term(u)
     Binder(Pi(mode), x, t, u, _) ->
       pretty_param(mode, x, t) <> "=> " <> pretty_term(u)
     Binder(InterT(mode), x, t, u, _) ->
@@ -272,5 +296,54 @@ pub fn pretty_term(term: Term) -> String {
       <> ", "
       <> pretty_term(p)
       <> ")"
+  }
+}
+
+pub fn inc(lvl: Level) -> Level {
+  Level(lvl.int + 1)
+}
+
+pub type Virtual {
+  VNeutral(Neutral)
+  VSort(Sort)
+  VNat(Int)
+  VNatType
+  VPi(String, Virtual, fn(Virtual) -> Virtual)
+  VLambda(String, fn(Virtual) -> Virtual)
+}
+
+pub type Neutral {
+  VIdent(String, Level)
+  VApp(Neutral, Virtual)
+}
+
+fn pretty_neutral(n: Neutral) -> String {
+  case n {
+    VIdent(x, _) -> x
+    VApp(m, v) -> "(" <> pretty_neutral(m) <> ")(" <> pretty_virtual(v) <> ")"
+  }
+}
+
+pub fn pretty_virtual(v: Virtual) -> String {
+  case v {
+    VNeutral(n) -> pretty_neutral(n)
+    VSort(TypeSort) -> "Type"
+    VSort(KindSort) -> "Kind"
+    VNat(n) -> int.to_string(n)
+    VNatType -> "Nat"
+    VPi("_", a, b) ->
+      "("
+      <> pretty_virtual(a)
+      <> ")=> "
+      <> pretty_virtual(b(VNeutral(VIdent("_", Level(0)))))
+    VPi(x, a, b) ->
+      "("
+      <> x
+      <> ": "
+      <> pretty_virtual(a)
+      <> ")=> "
+      <> pretty_virtual(b(VNeutral(VIdent(x, Level(0)))))
+    VLambda(x, f) ->
+      "(" <> x <> ")-> " <> pretty_virtual(f(VNeutral(VIdent(x, Level(0)))))
   }
 }

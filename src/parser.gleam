@@ -390,14 +390,15 @@ pub fn let_binding() -> Parser(Syntax) {
   return(ImmedAppSyntax(
     x,
     build_pi(pos, params, t),
-    v,
-    build_lambda(pos, params, e),
+    build_lambda(pos, params, v),
+    e,
     pos,
   ))
 }
 
 pub type Suffix {
   AppSuffix(BinderMode, Syntax, pos: Pos)
+  PiSuffix(Syntax, pos: Pos)
 }
 
 pub fn expr() -> Parser(Syntax) {
@@ -443,6 +444,13 @@ pub fn expr() -> Parser(Syntax) {
           use _ <- do(char(">"))
           return(AppSuffix(TypeMode, arg, pos))
         },
+        {
+          use pos <- do(get_pos())
+          use _ <- do(string("=>"))
+          use <- commit()
+          use rett <- do(lazy(expr))
+          return(PiSuffix(rett, pos))
+        },
       ])
     }),
   )
@@ -452,6 +460,7 @@ pub fn expr() -> Parser(Syntax) {
       list.fold(suffices, e, fn(ex, suffix) {
         case suffix {
           AppSuffix(mode, arg, pos) -> AppSyntax(mode, ex, arg, pos)
+          PiSuffix(rett, pos) -> PiSyntax(ManyMode, "_", ex, rett, pos)
         }
       })
   }
