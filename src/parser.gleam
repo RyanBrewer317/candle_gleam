@@ -228,7 +228,16 @@ pub fn pattern_string() -> Parser(String) {
 pub fn ident() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use s <- do(ident_string())
-  return(IdentSyntax(s, pos))
+  use <- ws()
+  use mb_lam <- do(maybe(string("->")))
+  case mb_lam {
+    Ok(_) -> {
+      use <- commit()
+      use body <- do(lazy(expr))
+      return(LambdaSyntax(ManyMode, s, Error(Nil), body, pos))
+    }
+    Error(Nil) -> return(IdentSyntax(s, pos))
+  }
 }
 
 pub fn nat() -> Parser(Syntax) {
@@ -257,8 +266,14 @@ pub fn zero_or_type_binder() -> Parser(Syntax) {
   use <- ws()
   use x <- do(pattern_string())
   use <- ws()
-  use _ <- do(char(":"))
-  use t <- do(lazy(expr))
+  use res2 <- do(maybe(char(":")))
+  use t <- do(case res2 {
+    Ok(_) -> {
+      use t <- do(lazy(expr))
+      return(Ok(t))
+    }
+    Error(_) -> return(Error(Nil))
+  })
   use mode <- do(case res {
     "{" -> {
       use _ <- do(char("}"))
@@ -271,12 +286,22 @@ pub fn zero_or_type_binder() -> Parser(Syntax) {
     _ -> panic as "impossible binder mode"
   })
   use <- ws()
-  use res <- do(either(string("->"), string("=>")))
-  use u <- do(lazy(expr))
-  case res {
-    "->" -> return(LambdaSyntax(mode, x, t, u, pos))
-    "=>" -> return(PiSyntax(mode, x, t, u, pos))
-    _ -> panic as "impossible zero or type binder"
+  case res2 {
+    Ok(_) -> {
+      let assert Ok(t) = t
+      use res <- do(either(string("->"), string("=>")))
+      use u <- do(lazy(expr))
+      case res {
+        "->" -> return(LambdaSyntax(mode, x, Ok(t), u, pos))
+        "=>" -> return(PiSyntax(mode, x, t, u, pos))
+        _ -> panic as "impossible zero or type binder"
+      }
+    }
+    Error(_) -> {
+      use _ <- do(string("->"))
+      use u <- do(lazy(expr))
+      return(LambdaSyntax(mode, x, t, u, pos))
+    }
   }
 }
 
@@ -305,7 +330,7 @@ pub fn parens() -> Parser(Syntax) {
       use body <- do(lazy(expr))
       case res {
         "->" -> {
-          return(LambdaSyntax(ManyMode, x, t, body, pos))
+          return(LambdaSyntax(ManyMode, x, Ok(t), body, pos))
         }
         "=>" -> {
           return(PiSyntax(ManyMode, x, t, body, pos))
@@ -353,8 +378,9 @@ pub fn parse_param() -> Parser(SyntaxParam) {
 fn build_pi(pos: Pos, params: List(SyntaxParam), rett: Syntax) -> Syntax {
   case params {
     [] -> rett
-    [param, ..rest] ->
+    [param, ..rest] -> {
       PiSyntax(param.mode, param.name, param.ty, build_pi(pos, rest, rett), pos)
+    }
   }
 }
 
@@ -365,7 +391,7 @@ fn build_lambda(pos: Pos, params: List(SyntaxParam), body: Syntax) -> Syntax {
       LambdaSyntax(
         param.mode,
         param.name,
-        param.ty,
+        Ok(param.ty),
         build_lambda(pos, rest, body),
         pos,
       )

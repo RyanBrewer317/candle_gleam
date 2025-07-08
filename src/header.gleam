@@ -40,7 +40,7 @@ pub fn pretty_syntax_param(param: SyntaxParam) -> String {
 pub const pr_syntax_param = Pretty(pretty_syntax_param)
 
 pub type Syntax {
-  LambdaSyntax(BinderMode, String, Syntax, Syntax, pos: Pos)
+  LambdaSyntax(BinderMode, String, Result(Syntax, Nil), Syntax, pos: Pos)
   IdentSyntax(String, pos: Pos)
   AppSyntax(BinderMode, Syntax, Syntax, pos: Pos)
   ImmedAppSyntax(String, Syntax, Syntax, Syntax, pos: Pos)
@@ -83,8 +83,16 @@ pub fn get_pos(s: Syntax) -> Pos {
 
 pub fn pretty_syntax(s: Syntax) -> String {
   case s {
-    LambdaSyntax(mode, x, t, e, _) ->
+    LambdaSyntax(mode, x, Ok(t), e, _) ->
       pretty_syntax_param(SyntaxParam(mode, x, t)) <> "-> " <> pretty_syntax(e)
+    LambdaSyntax(mode, x, Error(Nil), e, _) -> {
+      let outer = "-> " <> pretty_syntax(e)
+      case mode {
+        ManyMode -> "(" <> x <> ")" <> outer
+        ZeroMode -> "{" <> x <> "}" <> outer
+        TypeMode -> "<" <> x <> ">" <> outer
+      }
+    }
     IdentSyntax(name, _) -> name
     AppSyntax(ManyMode, foo, bar, _) ->
       "(" <> pretty_syntax(foo) <> ")(" <> pretty_syntax(bar) <> ")"
@@ -171,9 +179,8 @@ pub fn lvl_to_idx(size: Level, lvl: Level) -> Index {
 
 pub type Binder {
   Lambda(mode: BinderMode)
-  Pi(mode: BinderMode)
-  // invariant: InterT.mode is always ZeroMode
-  InterT(mode: BinderMode)
+  Pi(mode: BinderMode, ty: Term)
+  InterT(ty: Term)
   Let(mode: BinderMode, val: Term)
 }
 
@@ -207,7 +214,7 @@ pub type Ctor5 {
 
 pub type Term {
   Ident(BinderMode, Sort, Index, String, pos: Pos)
-  Binder(Binder, String, Term, Term, pos: Pos)
+  Binder(Binder, String, Term, pos: Pos)
   Ctor0(Ctor0, pos: Pos)
   Ctor1(Ctor1, Term, pos: Pos)
   Ctor2(Ctor2, Term, Term, pos: Pos)
@@ -215,28 +222,36 @@ pub type Term {
   Ctor5(Ctor5, Term, Term, Term, Term, Term, pos: Pos)
 }
 
-pub fn pretty_param(mode: BinderMode, x: String, t: Term) -> String {
+pub fn pretty_param(
+  mode: BinderMode,
+  x: String,
+  mb_t: Result(Term, Nil),
+) -> String {
+  let inner = case mb_t {
+    Ok(t) -> x <> ": " <> pretty_term(t)
+    Error(Nil) -> x
+  }
   case mode {
-    ManyMode -> "(" <> x <> ": " <> pretty_term(t) <> ")"
-    ZeroMode -> "{" <> x <> ": " <> pretty_term(t) <> "}"
-    TypeMode -> "<" <> x <> ": " <> pretty_term(t) <> ">"
+    ManyMode -> "(" <> inner <> ")"
+    ZeroMode -> "{" <> inner <> "}"
+    TypeMode -> "<" <> inner <> ">"
   }
 }
 
 pub fn pretty_term(term: Term) -> String {
   case term {
     Ident(_, _, _, s, _) -> s
-    Binder(Lambda(mode), x, t, e, _) ->
-      pretty_param(mode, x, t) <> "-> " <> pretty_term(e)
-    Binder(Pi(ManyMode), "_", t, u, _) ->
+    Binder(Lambda(mode), x, e, _) ->
+      pretty_param(mode, x, Error(Nil)) <> "-> " <> pretty_term(e)
+    Binder(Pi(ManyMode, t), "_", u, _) ->
       "(" <> pretty_term(t) <> ")=>" <> pretty_term(u)
-    Binder(Pi(mode), x, t, u, _) ->
-      pretty_param(mode, x, t) <> "=> " <> pretty_term(u)
-    Binder(InterT(mode), x, t, u, _) ->
-      pretty_param(mode, x, t) <> "& " <> pretty_term(u)
-    Binder(Let(mode, v), x, t, e, _) ->
+    Binder(Pi(mode, t), x, u, _) ->
+      pretty_param(mode, x, Ok(t)) <> "=> " <> pretty_term(u)
+    Binder(InterT(t), x, u, _) ->
+      pretty_param(ManyMode, x, Ok(t)) <> "& " <> pretty_term(u)
+    Binder(Let(mode, v), x, e, _) ->
       "let "
-      <> pretty_param(mode, x, t)
+      <> pretty_param(mode, x, Error(Nil))
       <> " = "
       <> pretty_term(v)
       <> " in "
