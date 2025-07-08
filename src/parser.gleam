@@ -2,8 +2,8 @@ import gleam/int
 import gleam/list
 import gleam/string
 import header.{
-  type BinderMode, type Pos, type Syntax, type SyntaxParam, AppSyntax,
-  IdentSyntax, ImmedAppSyntax, IntersectionTypeSyntax, LambdaSyntax, ManyMode,
+  type BinderMode, type Pos, type Syntax, type SyntaxParam, AppSyntax, DefSyntax,
+  IdentSyntax, IntersectionTypeSyntax, LambdaSyntax, LetSyntax, ManyMode,
   NatSyntax, NatTypeSyntax, PiSyntax, Pos, SortSyntax, SyntaxParam, TypeMode,
   TypeSort, ZeroMode,
 }
@@ -409,7 +409,7 @@ fn build_lambda(pos: Pos, params: List(SyntaxParam), body: Syntax) -> Syntax {
 
 pub fn let_binding() -> Parser(Syntax) {
   use pos <- do(get_pos())
-  use _ <- do(keyword("let"))
+  use res <- do(either(keyword("let"), keyword("def")))
   use <- ws()
   use <- commit()
   use x <- do(pattern_string())
@@ -422,13 +422,13 @@ pub fn let_binding() -> Parser(Syntax) {
   use v <- do(lazy(expr))
   use _ <- do(keyword("in"))
   use e <- do(lazy(expr))
-  return(ImmedAppSyntax(
-    x,
-    build_pi(pos, params, t),
-    build_lambda(pos, params, v),
-    e,
-    pos,
-  ))
+  let t = build_pi(pos, params, t)
+  let v = build_lambda(pos, params, v)
+  case res {
+    "let" -> return(LetSyntax(x, t, v, e, pos))
+    "def" -> return(DefSyntax(x, t, v, e, pos))
+    _ -> panic as "impossible binder"
+  }
 }
 
 pub type Suffix {

@@ -1,9 +1,5 @@
 import gleam/int
 
-pub type Pretty(a) {
-  Pretty(go: fn(a) -> String)
-}
-
 pub type Pos {
   Pos(src: String, line: Int, col: Int)
 }
@@ -12,12 +8,18 @@ pub fn pretty_pos(pos: Pos) -> String {
   int.to_string(pos.line) <> ":" <> int.to_string(pos.col)
 }
 
-pub const pr_pos = Pretty(pretty_pos)
-
 pub type BinderMode {
   ZeroMode
   ManyMode
   TypeMode
+}
+
+pub fn pretty_mode(m: BinderMode) -> String {
+  case m {
+    ZeroMode -> "erased"
+    ManyMode -> "relevant"
+    TypeMode -> "type-abstraction"
+  }
 }
 
 pub type Sort {
@@ -37,13 +39,12 @@ pub fn pretty_syntax_param(param: SyntaxParam) -> String {
   }
 }
 
-pub const pr_syntax_param = Pretty(pretty_syntax_param)
-
 pub type Syntax {
   LambdaSyntax(BinderMode, String, Result(Syntax, Nil), Syntax, pos: Pos)
   IdentSyntax(String, pos: Pos)
   AppSyntax(BinderMode, Syntax, Syntax, pos: Pos)
-  ImmedAppSyntax(String, Syntax, Syntax, Syntax, pos: Pos)
+  LetSyntax(String, Syntax, Syntax, Syntax, pos: Pos)
+  DefSyntax(String, Syntax, Syntax, Syntax, pos: Pos)
   NatSyntax(Int, pos: Pos)
   NatTypeSyntax(pos: Pos)
   SortSyntax(Sort, pos: Pos)
@@ -64,7 +65,8 @@ pub fn get_pos(s: Syntax) -> Pos {
     LambdaSyntax(_, _, _, _, pos) -> pos
     IdentSyntax(_, pos) -> pos
     AppSyntax(_, _, _, pos) -> pos
-    ImmedAppSyntax(_, _, _, _, pos) -> pos
+    LetSyntax(_, _, _, _, pos) -> pos
+    DefSyntax(_, _, _, _, pos) -> pos
     NatSyntax(_, pos) -> pos
     NatTypeSyntax(pos) -> pos
     SortSyntax(_, pos) -> pos
@@ -100,8 +102,17 @@ pub fn pretty_syntax(s: Syntax) -> String {
       "(" <> pretty_syntax(foo) <> "){" <> pretty_syntax(bar) <> "}"
     AppSyntax(TypeMode, foo, bar, _) ->
       "(" <> pretty_syntax(foo) <> ")<" <> pretty_syntax(bar) <> ">"
-    ImmedAppSyntax(x, t, v, scope, _) ->
+    LetSyntax(x, t, v, scope, _) ->
       "let "
+      <> x
+      <> ": "
+      <> pretty_syntax(t)
+      <> " = "
+      <> pretty_syntax(v)
+      <> " in "
+      <> pretty_syntax(scope)
+    DefSyntax(x, t, v, scope, _) ->
+      "def "
       <> x
       <> ": "
       <> pretty_syntax(t)
@@ -163,8 +174,6 @@ pub fn pretty_syntax(s: Syntax) -> String {
   }
 }
 
-pub const pr_syntax = Pretty(pretty_syntax)
-
 pub type Index {
   Index(int: Int)
 }
@@ -213,7 +222,7 @@ pub type Ctor5 {
 }
 
 pub type Term {
-  Ident(BinderMode, Sort, Index, String, pos: Pos)
+  Ident(BinderMode, Index, String, pos: Pos)
   Binder(Binder, String, Term, pos: Pos)
   Ctor0(Ctor0, pos: Pos)
   Ctor1(Ctor1, Term, pos: Pos)
@@ -240,7 +249,7 @@ pub fn pretty_param(
 
 pub fn pretty_term(term: Term) -> String {
   case term {
-    Ident(_, _, _, s, _) -> s
+    Ident(_, _, s, _) -> s
     Binder(Lambda(mode), x, e, _) ->
       pretty_param(mode, x, Error(Nil)) <> "-> " <> pretty_term(e)
     Binder(Pi(ManyMode, t), "_", u, _) ->
@@ -323,18 +332,18 @@ pub type Virtual {
   VSort(Sort)
   VNat(Int)
   VNatType
-  VPi(String, Virtual, fn(Virtual) -> Virtual)
-  VLambda(String, fn(Virtual) -> Virtual)
+  VPi(String, BinderMode, Virtual, fn(Virtual) -> Virtual)
+  VLambda(String, BinderMode, fn(Virtual) -> Virtual)
 }
 
 pub type Neutral {
-  VIdent(String, Level)
+  VIdent(String, BinderMode, Level)
   VApp(Neutral, Virtual)
 }
 
 fn pretty_neutral(n: Neutral) -> String {
   case n {
-    VIdent(x, _) -> x
+    VIdent(x, _, _) -> x
     VApp(m, v) -> "(" <> pretty_neutral(m) <> ")(" <> pretty_virtual(v) <> ")"
   }
 }
@@ -346,19 +355,22 @@ pub fn pretty_virtual(v: Virtual) -> String {
     VSort(KindSort) -> "Kind"
     VNat(n) -> int.to_string(n)
     VNatType -> "Nat"
-    VPi("_", a, b) ->
+    VPi("_", mode, a, b) ->
       "("
       <> pretty_virtual(a)
       <> ")=> "
-      <> pretty_virtual(b(VNeutral(VIdent("_", Level(0)))))
-    VPi(x, a, b) ->
+      <> pretty_virtual(b(VNeutral(VIdent("_", mode, Level(0)))))
+    VPi(x, mode, a, b) ->
       "("
       <> x
       <> ": "
       <> pretty_virtual(a)
       <> ")=> "
-      <> pretty_virtual(b(VNeutral(VIdent(x, Level(0)))))
-    VLambda(x, f) ->
-      "(" <> x <> ")-> " <> pretty_virtual(f(VNeutral(VIdent(x, Level(0)))))
+      <> pretty_virtual(b(VNeutral(VIdent(x, mode, Level(0)))))
+    VLambda(x, mode, f) ->
+      "("
+      <> x
+      <> ")-> "
+      <> pretty_virtual(f(VNeutral(VIdent(x, mode, Level(0)))))
   }
 }
