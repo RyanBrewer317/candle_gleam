@@ -9,10 +9,7 @@ import header.{
 }
 
 pub type Parser(a) {
-  Parser(
-    run: fn(Pos, String, List(String)) ->
-      Result(#(Pos, List(String), a), Failure),
-  )
+  Parser(run: fn(Pos, List(String)) -> Result(#(Pos, List(String), a), Failure))
 }
 
 pub type Failure {
@@ -21,7 +18,7 @@ pub type Failure {
 }
 
 pub fn parse(src: String, parser: Parser(a)) -> Result(a, String) {
-  case parser.run(Pos(src, 1, 1), "", string.to_graphemes(src)) {
+  case parser.run(Pos(src, 1, 1), string.to_graphemes(src)) {
     Ok(#(_, _, a)) -> Ok(a)
     Error(err) ->
       case err.expected {
@@ -39,9 +36,9 @@ pub fn parse(src: String, parser: Parser(a)) -> Result(a, String) {
 }
 
 pub fn satisfy(pred: fn(String) -> Bool) -> Parser(String) {
-  Parser(fn(pos, expected, chars) {
+  Parser(fn(pos, chars) {
     case chars {
-      [] -> Error(Normal("unexpected EOF", pos, expected))
+      [] -> Error(Normal("unexpected EOF", pos, ""))
       [c, ..rest] ->
         case pred(c) {
           True ->
@@ -51,8 +48,8 @@ pub fn satisfy(pred: fn(String) -> Bool) -> Parser(String) {
             }
           False ->
             case c {
-              "\n" -> Error(Normal("unexpected newline", pos, expected))
-              _ -> Error(Normal("unexpected " <> c, pos, expected))
+              "\n" -> Error(Normal("unexpected newline", pos, ""))
+              _ -> Error(Normal("unexpected " <> c, pos, ""))
             }
         }
     }
@@ -60,8 +57,8 @@ pub fn satisfy(pred: fn(String) -> Bool) -> Parser(String) {
 }
 
 pub fn map(parser: Parser(a), f: fn(a) -> b) -> Parser(b) {
-  Parser(fn(pos, expected, chars) {
-    case parser.run(pos, expected, chars) {
+  Parser(fn(pos, chars) {
+    case parser.run(pos, chars) {
       Ok(#(pos2, rest, a)) -> Ok(#(pos2, rest, f(a)))
       Error(e) -> Error(e)
     }
@@ -69,20 +66,20 @@ pub fn map(parser: Parser(a), f: fn(a) -> b) -> Parser(b) {
 }
 
 pub fn either(p1: Parser(a), p2: Parser(a)) -> Parser(a) {
-  Parser(fn(pos, expected, chars) {
-    case p1.run(pos, expected, chars) {
+  Parser(fn(pos, chars) {
+    case p1.run(pos, chars) {
       Ok(out) -> Ok(out)
-      Error(Normal(_, _, _)) -> p2.run(pos, expected, chars)
+      Error(Normal(_, _, _)) -> p2.run(pos, chars)
       Error(Bubbler(_, _, _)) as e -> e
     }
   })
 }
 
 pub fn many0(parser: Parser(a)) -> Parser(List(a)) {
-  Parser(fn(pos, expected, chars) {
-    case parser.run(pos, expected, chars) {
+  Parser(fn(pos, chars) {
+    case parser.run(pos, chars) {
       Ok(#(pos2, rest, a)) ->
-        case many0(parser).run(pos2, expected, rest) {
+        case many0(parser).run(pos2, rest) {
           Ok(#(pos3, rest2, others)) -> Ok(#(pos3, rest2, [a, ..others]))
           Error(Normal(_, _, _)) -> panic as "many0 returned normal failure"
           Error(Bubbler(_, _, _)) as e -> e
@@ -94,16 +91,16 @@ pub fn many0(parser: Parser(a)) -> Parser(List(a)) {
 }
 
 pub fn do(p1: Parser(a), f: fn(a) -> Parser(b)) -> Parser(b) {
-  Parser(fn(pos, expected, chars) {
-    case p1.run(pos, expected, chars) {
-      Ok(#(pos2, rest, a)) -> f(a).run(pos2, expected, rest)
+  Parser(fn(pos, chars) {
+    case p1.run(pos, chars) {
+      Ok(#(pos2, rest, a)) -> f(a).run(pos2, rest)
       Error(e) -> Error(e)
     }
   })
 }
 
 pub fn return(a: a) -> Parser(a) {
-  Parser(fn(pos, _, chars) { Ok(#(pos, chars, a)) })
+  Parser(fn(pos, chars) { Ok(#(pos, chars, a)) })
 }
 
 pub fn many(parser: Parser(a)) -> Parser(List(a)) {
@@ -113,8 +110,8 @@ pub fn many(parser: Parser(a)) -> Parser(List(a)) {
 }
 
 pub fn label(parser: Parser(a), expected: String) -> Parser(a) {
-  Parser(fn(pos, _, chars) {
-    case parser.run(pos, expected, chars) {
+  Parser(fn(pos, chars) {
+    case parser.run(pos, chars) {
       Ok(out) -> Ok(out)
       Error(Normal(msg, p, _)) -> Error(Normal(msg, p, expected))
       e -> e
@@ -123,8 +120,8 @@ pub fn label(parser: Parser(a), expected: String) -> Parser(a) {
 }
 
 pub fn commit(k: fn() -> Parser(a)) -> Parser(a) {
-  Parser(fn(pos, expected, chars) {
-    case k().run(pos, expected, chars) {
+  Parser(fn(pos, chars) {
+    case k().run(pos, chars) {
       Ok(out) -> Ok(out)
       Error(Normal(msg, p, e)) | Error(Bubbler(msg, p, e)) ->
         Error(Bubbler(msg, p, e))
@@ -133,7 +130,7 @@ pub fn commit(k: fn() -> Parser(a)) -> Parser(a) {
 }
 
 pub fn char(c: String) -> Parser(String) {
-  label(satisfy(fn(c2) { c == c2 }), c)
+  satisfy(fn(c2) { c == c2 }) |> label(c)
 }
 
 pub fn lowercase() -> Parser(String) {
@@ -157,11 +154,11 @@ pub fn alphanum() -> Parser(String) {
 }
 
 pub fn get_pos() -> Parser(Pos) {
-  Parser(fn(pos, _, chars) { Ok(#(pos, chars, pos)) })
+  Parser(fn(pos, chars) { Ok(#(pos, chars, pos)) })
 }
 
 pub fn lazy(thunk: fn() -> Parser(a)) -> Parser(a) {
-  Parser(fn(pos, expected, chars) { thunk().run(pos, expected, chars) })
+  Parser(fn(pos, chars) { thunk().run(pos, chars) })
 }
 
 pub fn any_of(parsers: List(Parser(a))) -> Parser(a) {
@@ -173,19 +170,21 @@ pub fn any_of(parsers: List(Parser(a))) -> Parser(a) {
 }
 
 pub fn string(s: String) -> Parser(String) {
-  // this function is hilariously slow
-  // thou shalt not prematurely optimize
-  // it works, okay
+  map(string_helper(s), fn(_) { s })
+  |> label(s)
+}
+
+fn string_helper(s: String) -> Parser(String) {
   case string.pop_grapheme(s) {
     Ok(#(c, "")) -> char(c)
-    Ok(#(c, rest)) -> do(char(c), fn(_) { map(string(rest), fn(_) { s }) })
+    Ok(#(c, rest)) -> do(char(c), fn(_) { string(rest) })
     Error(_) -> panic as "empty string"
   }
 }
 
 pub fn maybe(parser: Parser(a)) -> Parser(Result(a, Nil)) {
-  Parser(fn(pos, expected, chars) {
-    case parser.run(pos, expected, chars) {
+  Parser(fn(pos, chars) {
+    case parser.run(pos, chars) {
       Ok(#(pos2, rest, a)) -> Ok(#(pos2, rest, Ok(a)))
       Error(Normal(_, _, _)) -> Ok(#(pos, chars, Error(Nil)))
       Error(Bubbler(_, _, _) as e) -> Error(e)
@@ -195,9 +194,9 @@ pub fn maybe(parser: Parser(a)) -> Parser(Result(a, Nil)) {
 
 pub fn keyword(s: String) {
   use _ <- do(string(s))
-  Parser(fn(pos, expected, chars) {
-    case any_of([lowercase(), uppercase(), digit()]).run(pos, expected, chars) {
-      Ok(#(_, _, c)) -> Error(Normal("unexpected " <> c, pos, expected))
+  Parser(fn(pos, chars) {
+    case any_of([lowercase(), uppercase(), digit()]).run(pos, chars) {
+      Ok(#(_, _, c)) -> Error(Normal("unexpected " <> c, pos, s))
       Error(_) -> Ok(#(pos, chars, s))
     }
   })
@@ -223,6 +222,7 @@ pub fn pattern_string() -> Parser(String) {
       Error(_) -> return("_")
     }
   })
+  |> label("identifier")
 }
 
 pub fn ident() -> Parser(Syntax) {
@@ -267,23 +267,26 @@ pub fn zero_or_type_binder() -> Parser(Syntax) {
   use x <- do(pattern_string())
   use <- ws()
   use res2 <- do(maybe(char(":")))
-  use t <- do(case res2 {
-    Ok(_) -> {
+  use #(t, mode) <- do(case res, res2 {
+    "{", Ok(_) -> {
       use t <- do(lazy(expr))
-      return(Ok(t))
-    }
-    Error(_) -> return(Error(Nil))
-  })
-  use mode <- do(case res {
-    "{" -> {
       use _ <- do(char("}"))
-      return(ZeroMode)
+      return(#(Ok(t), ZeroMode))
     }
-    "<" -> {
+    "{", Error(Nil) -> {
+      use _ <- do(char("}") |> label(": or }"))
+      return(#(Error(Nil), ZeroMode))
+    }
+    "<", Ok(_) -> {
+      use t <- do(lazy(expr))
       use _ <- do(char(">"))
-      return(TypeMode)
+      return(#(Ok(t), TypeMode))
     }
-    _ -> panic as "impossible binder mode"
+    "<", Error(Nil) -> {
+      use _ <- do(char(">") |> label(": or >"))
+      return(#(Error(Nil), TypeMode))
+    }
+    _, _ -> panic as "impossible binder mode"
   })
   use <- ws()
   case res2 {
@@ -308,6 +311,7 @@ pub fn zero_or_type_binder() -> Parser(Syntax) {
 pub fn parens() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use _ <- do(char("("))
+  use <- commit()
   use <- ws()
   use res <- do(
     maybe({
@@ -319,7 +323,6 @@ pub fn parens() -> Parser(Syntax) {
   )
   case res {
     Ok(x) -> {
-      use <- commit()
       use t <- do(lazy(expr))
       use _ <- do(char(")"))
       use <- ws()
@@ -342,8 +345,14 @@ pub fn parens() -> Parser(Syntax) {
       }
     }
     Error(_) -> {
-      use e <- do(lazy(expr))
-      use _ <- do(char(")"))
+      use e <- do(lazy(expr) |> label("expression or binding"))
+      use _ <- do(
+        char(")")
+        |> label(case e {
+          IdentSyntax(_, _) -> ": or )"
+          _ -> ")"
+        }),
+      )
       return(e)
     }
   }
@@ -407,7 +416,7 @@ pub fn let_binding() -> Parser(Syntax) {
   use <- ws()
   use params <- do(many0(parse_param()))
   use <- ws()
-  use _ <- do(char(":"))
+  use _ <- do(char(":") |> label(": or parameter"))
   use t <- do(lazy(expr))
   use _ <- do(char("="))
   use v <- do(lazy(expr))
