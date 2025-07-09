@@ -1,11 +1,11 @@
 import gleam/result
 import header.{
   type BinderMode, type Level, type Sort, type Syntax, type Term, type Virtual,
-  App, AppSyntax, Binder, Ctor0, Ctor2, Ident, IdentSyntax, Index, KindSort,
-  Lambda, LambdaSyntax, Let, LetSyntax, Level, ManyMode, Nat, NatSyntax, NatT,
-  NatTypeSyntax, Pi, PiSyntax, Sort, SortSyntax, TypeMode, TypeSort, VApp,
-  VIdent, VLambda, VNat, VNatType, VNeutral, VPi, VSort, ZeroMode, inc,
-  pretty_term, pretty_virtual,
+  App, AppSyntax, Binder, Ctor0, Ctor2, DefSyntax, Ident, IdentSyntax, Index,
+  KindSort, Lambda, LambdaSyntax, Let, LetSyntax, Level, ManyMode, Nat,
+  NatSyntax, NatT, NatTypeSyntax, Pi, PiSyntax, Sort, SortSyntax, TypeMode,
+  TypeSort, VApp, VIdent, VLambda, VNat, VNatType, VNeutral, VPi, VSort,
+  ZeroMode, inc, pretty_term, pretty_virtual,
 }
 
 fn app(foo: Virtual, bar: Virtual) -> Virtual {
@@ -80,13 +80,6 @@ pub fn eq(lvl: Level, a: Virtual, b: Virtual) -> Bool {
   }
 }
 
-fn dom_sort(m: BinderMode, k: Sort) -> Sort {
-  case m {
-    ManyMode -> TypeSort
-    _ -> k
-  }
-}
-
 pub fn check(ctx: Context, s: Syntax, ty: Virtual) -> Result(Term, String) {
   case s, ty {
     LambdaSyntax(mode1, x, Ok(xt), body, pos), VPi(_, mode2, a, b) -> {
@@ -100,8 +93,18 @@ pub fn check(ctx: Context, s: Syntax, ty: Virtual) -> Result(Term, String) {
             <> header.pretty_mode(mode2),
           )
       })
-      use #(xt2, _xtt) <- result.try(infer(ctx, xt))
+      use #(xt2, xtt) <- result.try(infer(ctx, xt))
       let xt3 = eval(xt2, ctx.env)
+      use _ <- result.try(case mode1, xtt {
+        ManyMode, VSort(KindSort) ->
+          Error(
+            "relevant lambda bindings can't bind types ("
+            <> header.pretty_pos(pos)
+            <> ")",
+          )
+        _, VSort(_) -> Ok(Nil)
+        _, _ -> Error("hi2")
+      })
       use _ <- result.try(case eq(ctx.level, xt3, a) {
         True -> Ok(Nil)
         False ->
@@ -121,6 +124,17 @@ pub fn check(ctx: Context, s: Syntax, ty: Virtual) -> Result(Term, String) {
           scope: [#(x, #(mode1, a)), ..ctx.scope],
         )
       use body2 <- result.try(check(ctx2, body, b(v)))
+      use _ <- result.try(case mode1, b(v) {
+        TypeMode, VSort(KindSort) -> Ok(Nil)
+        _, VSort(KindSort) | TypeMode, VSort(_) ->
+          Error(
+            "type abstractions require the type-abstraction binding mode ("
+            <> header.pretty_pos(pos)
+            <> ")",
+          )
+        _, VSort(_) -> Ok(Nil)
+        _, _ -> panic as "type of body doesn't have type Type or Kind"
+      })
       Ok(Binder(Lambda(mode1), x, body2, pos))
     }
     LambdaSyntax(mode1, x, Error(Nil), body, pos), VPi(_, mode2, a, b) -> {
@@ -143,6 +157,17 @@ pub fn check(ctx: Context, s: Syntax, ty: Virtual) -> Result(Term, String) {
           scope: [#(x, #(mode1, a)), ..ctx.scope],
         )
       use body2 <- result.try(check(ctx2, body, b(dummy)))
+      use _ <- result.try(case mode1, b(dummy) {
+        TypeMode, VSort(KindSort) -> Ok(Nil)
+        _, VSort(KindSort) | TypeMode, VSort(_) ->
+          Error(
+            "type abstractions require the type-abstraction binding mode ("
+            <> header.pretty_pos(pos)
+            <> ")",
+          )
+        _, VSort(_) -> Ok(Nil)
+        _, _ -> panic as "type of body doesn't have type Type or Kind"
+      })
       Ok(Binder(Lambda(mode1), x, body2, pos))
     }
     LetSyntax(x, xt, v, e, pos), ty -> {
@@ -201,7 +226,6 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Virtual), String) {
     IdentSyntax(str, pos) -> {
       case scan(0, ctx.scope, str) {
         Ok(#(#(mode, ty), i)) -> Ok(#(Ident(mode, Index(i), str, pos), ty))
-        // TODO
         Error(Nil) -> Error("undefined variable " <> str)
       }
     }
@@ -233,9 +257,11 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Virtual), String) {
     }
     LambdaSyntax(mode, str, Ok(xt), body, pos) -> {
       use #(xt2, xtt) <- result.try(infer(ctx, xt))
-      use _ <- result.try(case xtt {
-        VSort(_) -> Ok(Nil)
-        _ -> Error("type annotation in lambda must be a type")
+      use _ <- result.try(case mode, xtt {
+        ManyMode, VSort(KindSort) ->
+          Error("relevant lambda binding can't bind types")
+        _, VSort(TypeSort) -> Ok(Nil)
+        _, _ -> Error("type annotation in lambda must be a type")
       })
       let xt2v = eval(xt2, ctx.env)
       let v = VNeutral(VIdent(str, mode, ctx.level))
@@ -277,7 +303,9 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Virtual), String) {
             "mode-mismatch between "
             <> header.pretty_mode(mode1)
             <> " and "
-            <> header.pretty_mode(mode2),
+            <> header.pretty_mode(mode2)
+            <> " at "
+            <> header.pretty_pos(pos),
           )
         _ ->
           Error(
@@ -305,8 +333,25 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Virtual), String) {
       use #(e2, et) <- result.try(infer(ctx2, e))
       Ok(#(Binder(Let(mode: ManyMode, val: v2), x, e2, pos), et))
     }
+    DefSyntax(x, xt, v, e, pos) -> {
+      use #(xt2, xtt) <- result.try(infer(ctx, xt))
+      use _ <- result.try(case xtt {
+        VSort(_) -> Ok(Nil)
+        _ -> Error("type annotation must be a type")
+      })
+      let xt2v = eval(xt2, ctx.env)
+      use v2 <- result.try(check(ctx, v, xt2v))
+      let v3 = eval(v2, ctx.env)
+      let ctx2 =
+        Context(..ctx, env: [v3, ..ctx.env], scope: [
+          #(x, #(ZeroMode, xt2v)),
+          ..ctx.scope
+        ])
+      use #(e2, et) <- result.try(infer(ctx2, e))
+      Ok(#(Binder(Let(mode: ZeroMode, val: v2), x, e2, pos), et))
+    }
     NatSyntax(n, pos) -> Ok(#(Ctor0(Nat(n), pos), VNatType))
     NatTypeSyntax(pos) -> Ok(#(Ctor0(NatT, pos), VSort(TypeSort)))
-    _ -> todo
+    _ -> todo as { header.pretty_syntax(s) }
   }
 }
