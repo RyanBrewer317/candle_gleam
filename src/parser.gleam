@@ -264,34 +264,29 @@ pub fn zero_or_type_binder() -> Parser(Syntax) {
   use res <- do(either(char("<"), char("{")))
   use <- commit()
   use <- ws()
-  use x <- do(pattern_string())
-  use <- ws()
-  use res2 <- do(maybe(char(":")))
-  use #(t, mode) <- do(case res, res2 {
-    "{", Ok(_) -> {
-      use t <- do(lazy(expr))
+  use mb_x <- do(
+    maybe({
+      use x <- do(pattern_string())
+      use <- ws()
+      use _ <- do(char(":"))
+      return(x)
+    }),
+  )
+  use t <- do(lazy(expr))
+  use mode <- do(case res {
+    "{" -> {
       use _ <- do(char("}"))
-      return(#(Ok(t), ZeroMode))
+      return(ZeroMode)
     }
-    "{", Error(Nil) -> {
-      use _ <- do(char("}") |> label(": or }"))
-      return(#(Error(Nil), ZeroMode))
-    }
-    "<", Ok(_) -> {
-      use t <- do(lazy(expr))
+    "<" -> {
       use _ <- do(char(">"))
-      return(#(Ok(t), TypeMode))
+      return(TypeMode)
     }
-    "<", Error(Nil) -> {
-      use _ <- do(char(">") |> label(": or >"))
-      return(#(Error(Nil), TypeMode))
-    }
-    _, _ -> panic as "impossible binder mode"
+    _ -> panic as "impossible binder mode"
   })
   use <- ws()
-  case res2 {
-    Ok(_) -> {
-      let assert Ok(t) = t
+  case mb_x, t {
+    Ok(x), _ -> {
       use res <- do(either(string("->"), string("=>")))
       use u <- do(lazy(expr))
       case res {
@@ -300,10 +295,19 @@ pub fn zero_or_type_binder() -> Parser(Syntax) {
         _ -> panic as "impossible zero or type binder"
       }
     }
-    Error(_) -> {
-      use _ <- do(string("->"))
+    Error(Nil), IdentSyntax(x, _) -> {
+      use res <- do(either(string("->"), string("=>")))
       use u <- do(lazy(expr))
-      return(LambdaSyntax(mode, x, t, u, pos))
+      case res {
+        "->" -> return(LambdaSyntax(mode, x, Error(Nil), u, pos))
+        "=>" -> return(PiSyntax(mode, "_", t, u, pos))
+        _ -> panic as "impossible zero or type binder"
+      }
+    }
+    Error(Nil), _ -> {
+      use _ <- do(string("=>"))
+      use u <- do(lazy(expr))
+      return(PiSyntax(mode, "_", t, u, pos))
     }
   }
 }
