@@ -1,11 +1,11 @@
 import gleam/result
 import header.{
-  type BinderMode, type Level, type Sort, type Syntax, type Term, type Virtual,
-  App, AppSyntax, Binder, Ctor0, Ctor2, DefSyntax, Ident, IdentSyntax, Index,
-  KindSort, Lambda, LambdaSyntax, Let, LetSyntax, Level, ManyMode, Nat,
-  NatSyntax, NatT, NatTypeSyntax, Pi, PiSyntax, Sort, SortSyntax, TypeMode,
-  TypeSort, VApp, VIdent, VLambda, VNat, VNatType, VNeutral, VPi, VSort,
-  ZeroMode, inc, pretty_term, pretty_virtual,
+  type BinderMode, type Index, type Level, type Pos, type Syntax, type Term,
+  type Virtual, App, AppSyntax, Binder, Ctor0, Ctor2, DefSyntax, Ident,
+  IdentSyntax, Index, KindSort, Lambda, LambdaSyntax, Let, LetSyntax, Level,
+  ManyMode, Nat, NatSyntax, NatT, NatTypeSyntax, Pi, PiSyntax, Sort, SortSyntax,
+  TypeMode, TypeSort, VApp, VIdent, VLambda, VNat, VNatType, VNeutral, VPi,
+  VSort, ZeroMode, inc, pretty_term, pretty_virtual,
 }
 
 fn app(foo: Virtual, bar: Virtual) -> Virtual {
@@ -80,6 +80,24 @@ pub fn eq(lvl: Level, a: Virtual, b: Virtual) -> Bool {
   }
 }
 
+fn inc_idx(i: Index) -> Index {
+  Index(i.int + 1)
+}
+
+fn rel_occurs(t: Term, x: Index) -> Result(Pos, Nil) {
+  case t {
+    Ident(_, y, _, pos) if x == y -> Ok(pos)
+    Ident(_, _, _, _) -> Error(Nil)
+    Binder(Let(_, v), _, e, _) ->
+      result.or(rel_occurs(v, x), rel_occurs(e, inc_idx(x)))
+    Binder(_, _, e, _) -> rel_occurs(e, inc_idx(x))
+    Ctor0(_, _) -> Error(Nil)
+    Ctor2(App(ZeroMode), a, _, _) -> rel_occurs(a, x)
+    Ctor2(_, a, b, _) -> result.or(rel_occurs(a, x), rel_occurs(b, x))
+    _ -> todo
+  }
+}
+
 pub fn check(ctx: Context, s: Syntax, ty: Virtual) -> Result(Term, String) {
   case s, ty {
     LambdaSyntax(mode1, x, Ok(xt), body, pos), VPi(_, mode2, a, b) -> {
@@ -114,6 +132,18 @@ pub fn check(ctx: Context, s: Syntax, ty: Virtual) -> Result(Term, String) {
           scope: [#(x, #(mode1, a)), ..ctx.scope],
         )
       use body2 <- result.try(check(ctx2, body, b(v)))
+      use _ <- result.try(case mode1 {
+        ZeroMode ->
+          case rel_occurs(body2, Index(0)) {
+            Ok(pos2) ->
+              Error(
+                "relevant usage of erased variable at "
+                <> header.pretty_pos(pos2),
+              )
+            Error(Nil) -> Ok(Nil)
+          }
+        _ -> Ok(Nil)
+      })
       Ok(Binder(Lambda(mode1), x, body2, pos))
     }
     LambdaSyntax(mode1, x, Error(Nil), body, pos), VPi(_, mode2, a, b) -> {
