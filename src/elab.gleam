@@ -93,18 +93,8 @@ pub fn check(ctx: Context, s: Syntax, ty: Virtual) -> Result(Term, String) {
             <> header.pretty_mode(mode2),
           )
       })
-      use #(xt2, xtt) <- result.try(infer(ctx, xt))
+      use #(xt2, _xtt) <- result.try(infer(ctx, xt))
       let xt3 = eval(xt2, ctx.env)
-      use _ <- result.try(case mode1, xtt {
-        ManyMode, VSort(KindSort) ->
-          Error(
-            "relevant lambda bindings can't bind types ("
-            <> header.pretty_pos(pos)
-            <> ")",
-          )
-        _, VSort(_) -> Ok(Nil)
-        _, _ -> Error("hi2")
-      })
       use _ <- result.try(case eq(ctx.level, xt3, a) {
         True -> Ok(Nil)
         False ->
@@ -124,17 +114,6 @@ pub fn check(ctx: Context, s: Syntax, ty: Virtual) -> Result(Term, String) {
           scope: [#(x, #(mode1, a)), ..ctx.scope],
         )
       use body2 <- result.try(check(ctx2, body, b(v)))
-      use _ <- result.try(case mode1, b(v) {
-        TypeMode, VSort(KindSort) -> Ok(Nil)
-        _, VSort(KindSort) | TypeMode, VSort(_) ->
-          Error(
-            "type abstractions require the type-abstraction binding mode ("
-            <> header.pretty_pos(pos)
-            <> ")",
-          )
-        _, VSort(_) -> Ok(Nil)
-        _, _ -> panic as "type of body doesn't have type Type or Kind"
-      })
       Ok(Binder(Lambda(mode1), x, body2, pos))
     }
     LambdaSyntax(mode1, x, Error(Nil), body, pos), VPi(_, mode2, a, b) -> {
@@ -157,17 +136,6 @@ pub fn check(ctx: Context, s: Syntax, ty: Virtual) -> Result(Term, String) {
           scope: [#(x, #(mode1, a)), ..ctx.scope],
         )
       use body2 <- result.try(check(ctx2, body, b(dummy)))
-      use _ <- result.try(case mode1, b(dummy) {
-        TypeMode, VSort(KindSort) -> Ok(Nil)
-        _, VSort(KindSort) | TypeMode, VSort(_) ->
-          Error(
-            "type abstractions require the type-abstraction binding mode ("
-            <> header.pretty_pos(pos)
-            <> ")",
-          )
-        _, VSort(_) -> Ok(Nil)
-        _, _ -> panic as "type of body doesn't have type Type or Kind"
-      })
       Ok(Binder(Lambda(mode1), x, body2, pos))
     }
     LetSyntax(x, xt, v, e, pos), ty -> {
@@ -214,13 +182,6 @@ fn scan(i: Int, l: List(#(k, v)), key: k) -> Result(#(v, Int), Nil) {
   }
 }
 
-fn sort_max(s1: Sort, s2: Sort) -> Sort {
-  case s1, s2 {
-    TypeSort, TypeSort -> TypeSort
-    _, _ -> KindSort
-  }
-}
-
 pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Virtual), String) {
   case s {
     IdentSyntax(str, pos) -> {
@@ -236,6 +197,15 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Virtual), String) {
       use #(a2, at) <- result.try(infer(ctx, a))
       case at {
         VSort(s1) -> {
+          use _ <- result.try(case s1, mode {
+            KindSort, ManyMode ->
+              Error(
+                "relevant lambdas can't bind types ("
+                <> header.pretty_pos(pos)
+                <> ")",
+              )
+            _, _ -> Ok(Nil)
+          })
           let dummy = VNeutral(VIdent(str, mode, ctx.level))
           let a3 = eval(a2, ctx.env)
           let ctx2 =
@@ -246,13 +216,39 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Virtual), String) {
               scope: [#(str, #(mode, a3)), ..ctx.scope],
             )
           use #(b2, bt) <- result.try(infer(ctx2, b))
-          case bt {
-            VSort(s2) ->
-              Ok(#(Binder(Pi(mode, a2), str, b2, pos), VSort(sort_max(s1, s2))))
-            _ -> Error("pi right-side be a type")
+          case bt, mode {
+            VSort(KindSort), TypeMode ->
+              Ok(#(Binder(Pi(mode, a2), str, b2, pos), VSort(KindSort)))
+            VSort(KindSort), ManyMode ->
+              Error(
+                "relevant functions can't return types ("
+                <> header.pretty_pos(pos)
+                <> ")",
+              )
+            VSort(KindSort), ZeroMode ->
+              Error(
+                "erased functions can't return types ("
+                <> header.pretty_pos(pos)
+                <> ")",
+              )
+            VSort(TypeSort), TypeMode ->
+              Error(
+                "type abstractions must return types ("
+                <> header.pretty_pos(pos)
+                <> ")",
+              )
+            VSort(TypeSort), _ ->
+              Ok(#(Binder(Pi(mode, a2), str, b2, pos), VSort(TypeSort)))
+            _, _ ->
+              Error(
+                "pi right-side be a type (" <> header.pretty_pos(pos) <> ")",
+              )
           }
         }
-        _ -> Error("pi left-side should be a type")
+        _ ->
+          Error(
+            "pi left-side should be a type (" <> header.pretty_pos(pos) <> ")",
+          )
       }
     }
     LambdaSyntax(mode, str, Ok(xt), body, pos) -> {

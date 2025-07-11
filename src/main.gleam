@@ -7,7 +7,7 @@ import parser
 fn go() {
   let code =
     "
-def nat{t: Type}: Type = t=>(t=>t)=>t in
+def nat<t: Type>: Type = t=>(t=>t)=>t in
 let zero{t: Type}: nat<t> = z-> s-> z in
 let succ{t: Type}: nat<t>=>nat<t> = n-> z-> s-> s(n(z)(s)) in
 let add{t: Type}: nat<nat<t>>=>nat<t>=>nat<t> = a-> b-> a(b)(succ{t}) in
