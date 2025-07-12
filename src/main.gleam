@@ -8,7 +8,12 @@ fn go() {
   let code =
     "
 def nat<t: Type>: Type := t=>(t=>t)=>t in
+def bool<t: Type>: Type := t=>t=>t in
+let true{t: Type}: bool<t> := t-> f-> t in
+let false{t: Type}: bool<t> := t-> f-> f in
 let zero{t: Type}: nat<t> := z-> s-> z in
+let zero_true{t: Type}: nat<t> & bool<t> := [zero{t}, true{t}] in
+let true2{t: Type}: bool<t> := zero_true{t}.2 in
 let succ{t: Type}: nat<t>=>nat<t> := n-> z-> s-> s(n(z)(s)) in
 let add{t: Type}: nat<nat<t>>=>nat<t>=>nat<t> 
   := a-> b-> a(b)(succ{t}) in

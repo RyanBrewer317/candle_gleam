@@ -3,9 +3,10 @@ import gleam/list
 import gleam/string
 import header.{
   type BinderMode, type Pos, type Syntax, type SyntaxParam, AppSyntax, DefSyntax,
-  EqSyntax, IdentSyntax, IntersectionTypeSyntax, JSyntax, LambdaSyntax,
-  LetSyntax, ManyMode, NatSyntax, NatTypeSyntax, PiSyntax, Pos, ReflSyntax,
-  SortSyntax, SyntaxParam, TypeMode, TypeSort, ZeroMode,
+  EqSyntax, FstSyntax, IdentSyntax, IntersectionSyntax, IntersectionTypeSyntax,
+  JSyntax, LambdaSyntax, LetSyntax, ManyMode, NatSyntax, NatTypeSyntax, PiSyntax,
+  Pos, ReflSyntax, SndSyntax, SortSyntax, SyntaxParam, TypeMode, TypeSort,
+  ZeroMode,
 }
 
 pub type Parser(a) {
@@ -483,10 +484,24 @@ pub fn j() -> Parser(Syntax) {
   return(JSyntax(eq, p, pos))
 }
 
+pub fn intersection() -> Parser(Syntax) {
+  use pos <- do(get_pos())
+  use _ <- do(char("["))
+  use <- commit()
+  use a <- do(lazy(expr))
+  use _ <- do(char(","))
+  use b <- do(lazy(expr))
+  use _ <- do(char("]"))
+  return(IntersectionSyntax(a, b, pos))
+}
+
 pub type Suffix {
   AppSuffix(BinderMode, Syntax, pos: Pos)
   PiSuffix(Syntax, pos: Pos)
   EqSuffix(Syntax, pos: Pos)
+  InterSuffix(Syntax, pos: Pos)
+  FstSuffix(pos: Pos)
+  SndSuffix(pos: Pos)
 }
 
 pub fn expr() -> Parser(Syntax) {
@@ -501,6 +516,7 @@ pub fn expr() -> Parser(Syntax) {
       let_binding(),
       refl(),
       j(),
+      intersection(),
       ident(),
       relevant_but_ignored(),
     ]),
@@ -549,6 +565,24 @@ pub fn expr() -> Parser(Syntax) {
           use b <- do(lazy(expr))
           return(EqSuffix(b, pos))
         },
+        {
+          use pos <- do(get_pos())
+          use _ <- do(char("&"))
+          use <- commit()
+          use b <- do(lazy(expr))
+          return(InterSuffix(b, pos))
+        },
+        {
+          use pos <- do(get_pos())
+          use _ <- do(char("."))
+          use <- commit()
+          use proj <- do(either(char("1"), char("2")))
+          case proj {
+            "1" -> return(FstSuffix(pos))
+            "2" -> return(SndSuffix(pos))
+            _ -> panic as "impossible projection"
+          }
+        },
       ])
     }),
   )
@@ -560,6 +594,9 @@ pub fn expr() -> Parser(Syntax) {
           AppSuffix(mode, arg, pos) -> AppSyntax(mode, ex, arg, pos)
           PiSuffix(rett, pos) -> PiSyntax(ManyMode, "_", ex, rett, pos)
           EqSuffix(b, pos) -> EqSyntax(ex, b, pos)
+          InterSuffix(b, pos) -> IntersectionTypeSyntax("_", ex, b, pos)
+          FstSuffix(pos) -> FstSyntax(ex, pos)
+          SndSuffix(pos) -> SndSyntax(ex, pos)
         }
       })
   }

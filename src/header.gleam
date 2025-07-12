@@ -51,7 +51,7 @@ pub type Syntax {
   PiSyntax(BinderMode, String, Syntax, Syntax, pos: Pos)
   JSyntax(Syntax, Syntax, pos: Pos)
   IntersectionTypeSyntax(String, Syntax, Syntax, pos: Pos)
-  IntersectionSyntax(Syntax, Syntax, Syntax, pos: Pos)
+  IntersectionSyntax(Syntax, Syntax, pos: Pos)
   FstSyntax(Syntax, pos: Pos)
   SndSyntax(Syntax, pos: Pos)
   EqSyntax(Syntax, Syntax, pos: Pos)
@@ -73,7 +73,7 @@ pub fn get_pos(s: Syntax) -> Pos {
     PiSyntax(_, _, _, _, pos) -> pos
     JSyntax(_, _, pos) -> pos
     IntersectionTypeSyntax(_, _, _, pos) -> pos
-    IntersectionSyntax(_, _, _, pos) -> pos
+    IntersectionSyntax(_, _, pos) -> pos
     FstSyntax(_, pos) -> pos
     SndSyntax(_, pos) -> pos
     EqSyntax(_, _, pos) -> pos
@@ -132,16 +132,10 @@ pub fn pretty_syntax(s: Syntax) -> String {
       pretty_syntax_param(SyntaxParam(ManyMode, x, t))
       <> "& "
       <> pretty_syntax(u)
-    IntersectionSyntax(l, r, t, _) ->
-      "["
-      <> pretty_syntax(l)
-      <> ", "
-      <> pretty_syntax(r)
-      <> "; "
-      <> pretty_syntax(t)
-      <> "]"
-    FstSyntax(a, _) -> ".1(" <> pretty_syntax(a) <> ")"
-    SndSyntax(a, _) -> ".2(" <> pretty_syntax(a) <> ")"
+    IntersectionSyntax(l, r, _) ->
+      "[" <> pretty_syntax(l) <> ", " <> pretty_syntax(r) <> "]"
+    FstSyntax(a, _) -> "(" <> pretty_syntax(a) <> ").1"
+    SndSyntax(a, _) -> "(" <> pretty_syntax(a) <> ").2"
     EqSyntax(a, b, _) ->
       "(" <> pretty_syntax(a) <> ") = (" <> pretty_syntax(b) <> ")"
     ReflSyntax(a, _) -> "refl(" <> pretty_syntax(a) <> ")"
@@ -192,10 +186,10 @@ pub type Ctor1 {
 pub type Ctor2 {
   App(BinderMode)
   J
+  Inter
 }
 
 pub type Ctor3 {
-  Inter
   Cast
   Eq
 }
@@ -260,14 +254,8 @@ pub fn pretty_term(term: Term) -> String {
         TypeMode -> "<" <> pretty_term(bar) <> ">"
       }
     Ctor1(Refl, a, _) -> "refl(" <> pretty_term(a) <> ")"
-    Ctor3(Inter, a, b, t, _) ->
-      "["
-      <> pretty_term(a)
-      <> ", "
-      <> pretty_term(b)
-      <> "; "
-      <> pretty_term(t)
-      <> "]"
+    Ctor2(Inter, a, b, _) ->
+      "[" <> pretty_term(a) <> ", " <> pretty_term(b) <> "]"
     Ctor3(Eq, a, b, _t, _) ->
       "(" <> pretty_term(a) <> ") = (" <> pretty_term(b) <> ")"
     Ctor3(Cast, a, b, eq, _) ->
@@ -297,6 +285,10 @@ pub type Value {
   VEq(Value, Value, Value, Pos)
   VRefl(Value, Pos)
   VJ(Value, Value, Pos)
+  VInter(Value, Value, Pos)
+  VInterT(String, Value, fn(Value) -> Value, Pos)
+  VFst(Value, Pos)
+  VSnd(Value, Pos)
 }
 
 pub type Neutral {
@@ -315,6 +307,10 @@ pub fn value_pos(v: Value) -> Pos {
     VEq(_, _, _, pos) -> pos
     VRefl(_, pos) -> pos
     VJ(_, _, pos) -> pos
+    VInter(_, _, pos) -> pos
+    VInterT(_, _, _, pos) -> pos
+    VFst(_, pos) -> pos
+    VSnd(_, pos) -> pos
   }
 }
 
@@ -370,6 +366,16 @@ pub fn pretty_value(v: Value) -> String {
       "(" <> pretty_value(a) <> ") = (" <> pretty_value(b) <> ")"
     VRefl(a, _) -> "refl(" <> pretty_value(a) <> ")"
     VJ(e, p, _) -> "J(" <> pretty_value(e) <> ", " <> pretty_value(p) <> ")"
+    VInter(a, b, _) -> "[" <> pretty_value(a) <> ", " <> pretty_value(b) <> "]"
+    VInterT(x, a, b, pos) ->
+      "("
+      <> x
+      <> ": "
+      <> pretty_value(a)
+      <> ")& "
+      <> pretty_value(b(VNeutral(VIdent(x, TypeMode, Level(0), pos))))
+    VFst(a, _) -> "(" <> pretty_value(a) <> ").1"
+    VSnd(a, _) -> "(" <> pretty_value(a) <> ").2"
   }
 }
 
@@ -391,6 +397,13 @@ pub fn quote(size: Level, v: Value) -> Term {
       Ctor3(Eq, quote(size, a), quote(size, b), quote(size, t), p)
     VRefl(a, p) -> Ctor1(Refl, quote(size, a), p)
     VJ(e, pred, pos) -> Ctor2(J, quote(size, e), quote(size, pred), pos)
+    VInter(a, b, pos) -> Ctor2(Inter, quote(size, a), quote(size, b), pos)
+    VInterT(x, a, b, pos) -> {
+      let n = VNeutral(VIdent(x, TypeMode, size, pos))
+      Binder(InterT(quote(size, a)), x, quote(inc(size), b(n)), pos)
+    }
+    VFst(a, pos) -> Ctor1(Fst, quote(size, a), pos)
+    VSnd(a, pos) -> Ctor1(Snd, quote(size, a), pos)
   }
 }
 

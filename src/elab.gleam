@@ -2,11 +2,13 @@ import gleam/result
 import header.{
   type BinderMode, type Index, type Level, type Neutral, type Pos, type Syntax,
   type Term, type Value, App, AppSyntax, Binder, Ctor0, Ctor1, Ctor2, Ctor3,
-  DefSyntax, Eq, EqSyntax, Ident, IdentSyntax, Index, J, JSyntax, KindSort,
+  DefSyntax, Eq, EqSyntax, Fst, FstSyntax, Ident, IdentSyntax, Index, Inter,
+  InterT, IntersectionSyntax, IntersectionTypeSyntax, J, JSyntax, KindSort,
   Lambda, LambdaSyntax, Let, LetSyntax, Level, ManyMode, Nat, NatSyntax, NatT,
-  NatTypeSyntax, Pi, PiSyntax, Refl, ReflSyntax, Sort, SortSyntax, TypeMode,
-  TypeSort, VApp, VEq, VIdent, VJ, VLambda, VNat, VNatType, VNeutral, VPi, VRefl,
-  VSort, ZeroMode, inc, pretty_mode, pretty_pos, pretty_term, pretty_value,
+  NatTypeSyntax, Pi, PiSyntax, Refl, ReflSyntax, Snd, SndSyntax, Sort,
+  SortSyntax, TypeMode, TypeSort, VApp, VEq, VFst, VIdent, VInter, VInterT, VJ,
+  VLambda, VNat, VNatType, VNeutral, VPi, VRefl, VSnd, VSort, ZeroMode, inc,
+  pretty_mode, pretty_pos, pretty_term, pretty_value,
 }
 
 fn erase(t: Value) -> Value {
@@ -18,8 +20,12 @@ fn erase(t: Value) -> Value {
     VPi(x, mode, a, b, p) ->
       VPi(x, mode, erase(a), fn(arg) { erase(b(arg)) }, p)
     VEq(a, b, t, p) -> VEq(erase(a), erase(b), erase(t), p)
-    VRefl(_, p) -> VLambda("x", ManyMode, fn(x) {x}, p)
+    VRefl(_, p) -> VLambda("x", ManyMode, fn(x) { x }, p)
     VJ(e, _, _) -> erase(e)
+    VInter(a, _, _) -> erase(a)
+    VFst(a, _) -> erase(a)
+    VSnd(a, _) -> erase(a)
+    VInterT(x, a, b, p) -> VInterT(x, erase(a), fn(arg) { erase(b(arg)) }, p)
     VNat(_, _) | VNatType(_) | VSort(_, _) -> t
   }
 }
@@ -70,6 +76,11 @@ pub fn eval(t: Term, env: List(Value)) -> Value {
       VEq(eval(a, env), eval(b, env), eval(t, env), pos)
     Ctor1(Refl, a, pos) -> VRefl(eval(a, env), pos)
     Ctor2(J, e, p, pos) -> VJ(eval(e, env), eval(p, env), pos)
+    Ctor2(Inter, a, b, pos) -> VInter(eval(a, env), eval(b, env), pos)
+    Binder(InterT(a), x, b, pos) ->
+      VInterT(x, eval(a, env), fn(arg) { eval(b, [arg, ..env]) }, pos)
+    Ctor1(Fst, a, pos) -> VFst(eval(a, env), pos)
+    Ctor1(Snd, a, pos) -> VSnd(eval(a, env), pos)
     _ -> todo
   }
 }
@@ -114,6 +125,13 @@ fn eq_helper(lvl: Level, a: Value, b: Value) -> Bool {
       eqh(a1, a2) && eqh(b1, b2) && eqh(t1, t2)
     VRefl(a1, _), VRefl(a2, _) -> eqh(a1, a2)
     VJ(e1, p1, _), VJ(e2, p2, _) -> eqh(e1, e2) && eqh(p1, p2)
+    VInter(a1, b1, _), VInter(a2, b2, _) -> eqh(a1, a2) && eqh(b1, b2)
+    VInterT(x, a1, b1, pos), VInterT(_, a2, b2, _) -> {
+      let dummy = VNeutral(VIdent(x, TypeMode, lvl, pos))
+      eqh(a1, a2) && eq_helper(inc(lvl), b1(dummy), b2(dummy))
+    }
+    VFst(a1, _), VFst(a2, _) -> eqh(a1, a2)
+    VSnd(a1, _), VSnd(a2, _) -> eqh(a1, a2)
     _, _ -> False
   }
 }
@@ -130,8 +148,10 @@ fn rel_occurs(t: Term, x: Index) -> Result(Pos, Nil) {
       result.or(rel_occurs(v, x), rel_occurs(e, inc_idx(x)))
     Binder(_, _, e, _) -> rel_occurs(e, inc_idx(x))
     Ctor0(_, _) -> Error(Nil)
+    Ctor1(Refl, _, _) -> Error(Nil)
     Ctor1(_, a, _) -> rel_occurs(a, x)
     Ctor2(App(ZeroMode), a, _, _) -> rel_occurs(a, x)
+    Ctor2(J, _, _, _) -> Error(Nil)
     Ctor2(_, a, b, _) -> result.or(rel_occurs(a, x), rel_occurs(b, x))
     Ctor3(_, a, b, c, _) ->
       rel_occurs(a, x)
@@ -249,6 +269,20 @@ pub fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
           )
       })
       Ok(Ctor1(Refl, x2, pos))
+    }
+    IntersectionSyntax(a, b, pos), VInterT(_, at, bt, _) -> {
+      use a2 <- result.try(check(ctx, a, at))
+      let a3 = eval(a2, ctx.env)
+      use b2 <- result.try(check(ctx, b, bt(a3)))
+      let b3 = eval(b2, ctx.env)
+      use _ <- result.try(case eq(ctx.level, a3, b3) {
+        True -> Ok(Nil)
+        False ->
+          Error(
+            "intersection components must be equal (" <> pretty_pos(pos) <> ")",
+          )
+      })
+      Ok(Ctor2(Inter, a2, b2, pos))
     }
     s, ty -> {
       use #(v, ty2) <- result.try(infer(ctx, s))
@@ -487,6 +521,37 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
           ))
         }
         _ -> Error("J requires an equality type")
+      }
+    }
+    IntersectionTypeSyntax(x, a, b, pos) -> {
+      use a2 <- result.try(check(ctx, a, VSort(TypeSort, pos)))
+      let dummy = VNeutral(VIdent(x, TypeMode, ctx.level, pos))
+      let a3 = eval(a2, ctx.env)
+      let ctx2 =
+        Context(
+          level: inc(ctx.level),
+          types: [a3, ..ctx.types],
+          env: [dummy, ..ctx.env],
+          scope: [#(x, #(TypeMode, a3)), ..ctx.scope],
+        )
+      use b2 <- result.try(check(ctx2, b, VSort(TypeSort, pos)))
+      Ok(#(Binder(InterT(a2), x, b2, pos), VSort(TypeSort, pos)))
+    }
+    FstSyntax(a, pos) -> {
+      use #(a2, at) <- result.try(infer(ctx, a))
+      case at {
+        VInterT(_, a, _, _) -> Ok(#(Ctor1(Fst, a2, pos), a))
+        _ ->
+          Error("Projection requires intersection (" <> pretty_pos(pos) <> ")")
+      }
+    }
+    SndSyntax(a, pos) -> {
+      use #(a2, at) <- result.try(infer(ctx, a))
+      let a3 = eval(a2, ctx.env)
+      case at {
+        VInterT(_, _, b, _) -> Ok(#(Ctor1(Snd, a2, pos), b(VFst(a3, pos))))
+        _ ->
+          Error("Projection requires intersection (" <> pretty_pos(pos) <> ")")
       }
     }
     _ -> todo as { header.pretty_syntax(s) }
