@@ -18,8 +18,8 @@ fn erase(t: Value) -> Value {
     VPi(x, mode, a, b, p) ->
       VPi(x, mode, erase(a), fn(arg) { erase(b(arg)) }, p)
     VEq(a, b, t, p) -> VEq(erase(a), erase(b), erase(t), p)
-    VRefl(a, p) -> VRefl(erase(a), p)
-    VJ(e, pred, pos) -> VJ(erase(e), erase(pred), pos)
+    VRefl(_, p) -> VLambda("x", ManyMode, fn(x) {x}, p)
+    VJ(e, _, _) -> erase(e)
     VNat(_, _) | VNatType(_) | VSort(_, _) -> t
   }
 }
