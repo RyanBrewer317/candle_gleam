@@ -1,14 +1,14 @@
 import gleam/result
 import header.{
   type BinderMode, type Index, type Level, type Neutral, type Pos, type Syntax,
-  type Term, type Virtual, App, AppSyntax, Binder, Ctor0, Ctor2, DefSyntax,
-  Ident, IdentSyntax, Index, KindSort, Lambda, LambdaSyntax, Let, LetSyntax,
-  Level, ManyMode, Nat, NatSyntax, NatT, NatTypeSyntax, Pi, PiSyntax, Sort,
-  SortSyntax, TypeMode, TypeSort, VApp, VIdent, VLambda, VNat, VNatType,
-  VNeutral, VPi, VSort, ZeroMode, inc, pretty_term, pretty_virtual,
+  type Term, type Value, App, AppSyntax, Binder, Ctor0, Ctor2, DefSyntax, Ident,
+  IdentSyntax, Index, KindSort, Lambda, LambdaSyntax, Let, LetSyntax, Level,
+  ManyMode, Nat, NatSyntax, NatT, NatTypeSyntax, Pi, PiSyntax, Sort, SortSyntax,
+  TypeMode, TypeSort, VApp, VIdent, VLambda, VNat, VNatType, VNeutral, VPi,
+  VSort, ZeroMode, inc, pretty_term, pretty_virtual,
 }
 
-fn erase(t: Virtual) -> Virtual {
+fn erase(t: Value) -> Value {
   case t {
     VNeutral(n) -> VNeutral(erase_neutral(n))
     VLambda(_, ZeroMode, e) ->
@@ -27,7 +27,7 @@ fn erase_neutral(n: Neutral) -> Neutral {
   }
 }
 
-fn app(mode: BinderMode, foo: Virtual, bar: Virtual) -> Virtual {
+fn app(mode: BinderMode, foo: Value, bar: Value) -> Value {
   case foo {
     VNeutral(neutral) -> VNeutral(VApp(mode, neutral, bar))
     VLambda(_, _, f) -> f(bar)
@@ -43,7 +43,7 @@ fn lookup(l: List(a), i: Int) -> Result(a, Nil) {
   }
 }
 
-pub fn eval(t: Term, env: List(Virtual)) -> Virtual {
+pub fn eval(t: Term, env: List(Value)) -> Value {
   case t {
     Ident(_mode, idx, _s, _pos) ->
       case lookup(env, idx.int) {
@@ -67,19 +67,19 @@ pub fn eval(t: Term, env: List(Virtual)) -> Virtual {
 pub type Context {
   Context(
     level: Level,
-    types: List(Virtual),
-    env: List(Virtual),
-    scope: List(#(String, #(BinderMode, Virtual))),
+    types: List(Value),
+    env: List(Value),
+    scope: List(#(String, #(BinderMode, Value))),
   )
 }
 
 pub const empty_ctx = Context(Level(0), [], [], [])
 
-fn eq(lvl: Level, a: Virtual, b: Virtual) -> Bool {
+fn eq(lvl: Level, a: Value, b: Value) -> Bool {
   eq_helper(lvl, erase(a), erase(b))
 }
 
-fn eq_helper(lvl: Level, a: Virtual, b: Virtual) -> Bool {
+fn eq_helper(lvl: Level, a: Value, b: Value) -> Bool {
   case a, b {
     VSort(s1), VSort(s2) -> s1 == s2
     VPi(x, m1, t1, u1), VPi(_, m2, t2, u2) -> {
@@ -125,7 +125,7 @@ fn rel_occurs(t: Term, x: Index) -> Result(Pos, Nil) {
   }
 }
 
-pub fn check(ctx: Context, s: Syntax, ty: Virtual) -> Result(Term, String) {
+pub fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
   case s, ty {
     LambdaSyntax(mode1, x, Ok(xt), body, pos), VPi(_, mode2, a, b) -> {
       use _ <- result.try(case mode1 == mode2 {
@@ -239,7 +239,7 @@ fn scan(i: Int, l: List(#(k, v)), key: k) -> Result(#(v, Int), Nil) {
   }
 }
 
-pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Virtual), String) {
+pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
   case s {
     IdentSyntax(str, pos) -> {
       case scan(0, ctx.scope, str) {

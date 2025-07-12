@@ -194,7 +194,6 @@ pub type Binder {
 }
 
 pub type Ctor0 {
-  Diamond
   Sort(Sort)
   NatT
   Nat(Int)
@@ -265,7 +264,6 @@ pub fn pretty_term(term: Term) -> String {
       <> pretty_term(v)
       <> " in "
       <> pretty_term(e)
-    Ctor0(Diamond, _) -> "Diamond"
     Ctor0(Sort(TypeSort), _) -> "Type"
     Ctor0(Sort(KindSort), _) -> "Kind"
     Ctor0(NatT, _) -> "Nat"
@@ -327,18 +325,18 @@ pub fn inc(lvl: Level) -> Level {
   Level(lvl.int + 1)
 }
 
-pub type Virtual {
+pub type Value {
   VNeutral(Neutral)
   VSort(Sort)
   VNat(Int)
   VNatType
-  VPi(String, BinderMode, Virtual, fn(Virtual) -> Virtual)
-  VLambda(String, BinderMode, fn(Virtual) -> Virtual)
+  VPi(String, BinderMode, Value, fn(Value) -> Value)
+  VLambda(String, BinderMode, fn(Value) -> Value)
 }
 
 pub type Neutral {
   VIdent(String, BinderMode, Level)
-  VApp(BinderMode, Neutral, Virtual)
+  VApp(BinderMode, Neutral, Value)
 }
 
 fn pretty_neutral(n: Neutral) -> String {
@@ -353,7 +351,7 @@ fn pretty_neutral(n: Neutral) -> String {
   }
 }
 
-pub fn pretty_virtual(v: Virtual) -> String {
+pub fn pretty_virtual(v: Value) -> String {
   case v {
     VNeutral(n) -> pretty_neutral(n)
     VSort(TypeSort) -> "Type"
