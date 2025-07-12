@@ -259,6 +259,16 @@ pub fn type_type() -> Parser(Syntax) {
   return(SortSyntax(TypeSort, pos))
 }
 
+pub fn relevant_but_ignored() -> Parser(Syntax) {
+  use pos <- do(get_pos())
+  use x <- do(pattern_string())
+  use <- commit()
+  use <- ws()
+  use _ <- do(string("->"))
+  use e <- do(lazy(expr))
+  return(LambdaSyntax(ManyMode, x, Error(Nil), e, pos))
+}
+
 pub fn zero_or_type_binder() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use res <- do(either(char("<"), char("{")))
@@ -467,6 +477,7 @@ pub fn expr() -> Parser(Syntax) {
       zero_or_type_binder(),
       let_binding(),
       ident(),
+      relevant_but_ignored(),
     ]),
     "expression",
   ))
