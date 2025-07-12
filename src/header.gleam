@@ -338,13 +338,18 @@ pub type Virtual {
 
 pub type Neutral {
   VIdent(String, BinderMode, Level)
-  VApp(Neutral, Virtual)
+  VApp(BinderMode, Neutral, Virtual)
 }
 
 fn pretty_neutral(n: Neutral) -> String {
   case n {
     VIdent(x, _, _) -> x
-    VApp(m, v) -> "(" <> pretty_neutral(m) <> ")(" <> pretty_virtual(v) <> ")"
+    VApp(ManyMode, a, b) ->
+      "(" <> pretty_neutral(a) <> ")(" <> pretty_virtual(b) <> ")"
+    VApp(ZeroMode, a, b) ->
+      "(" <> pretty_neutral(a) <> "){" <> pretty_virtual(b) <> "}"
+    VApp(TypeMode, a, b) ->
+      "(" <> pretty_neutral(a) <> ")<" <> pretty_virtual(b) <> ">"
   }
 }
 

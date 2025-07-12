@@ -1,16 +1,35 @@
 import gleam/result
 import header.{
-  type BinderMode, type Index, type Level, type Pos, type Syntax, type Term,
-  type Virtual, App, AppSyntax, Binder, Ctor0, Ctor2, DefSyntax, Ident,
-  IdentSyntax, Index, KindSort, Lambda, LambdaSyntax, Let, LetSyntax, Level,
-  ManyMode, Nat, NatSyntax, NatT, NatTypeSyntax, Pi, PiSyntax, Sort, SortSyntax,
-  TypeMode, TypeSort, VApp, VIdent, VLambda, VNat, VNatType, VNeutral, VPi,
-  VSort, ZeroMode, inc, pretty_term, pretty_virtual,
+  type BinderMode, type Index, type Level, type Neutral, type Pos, type Syntax,
+  type Term, type Virtual, App, AppSyntax, Binder, Ctor0, Ctor2, DefSyntax,
+  Ident, IdentSyntax, Index, KindSort, Lambda, LambdaSyntax, Let, LetSyntax,
+  Level, ManyMode, Nat, NatSyntax, NatT, NatTypeSyntax, Pi, PiSyntax, Sort,
+  SortSyntax, TypeMode, TypeSort, VApp, VIdent, VLambda, VNat, VNatType,
+  VNeutral, VPi, VSort, ZeroMode, inc, pretty_term, pretty_virtual,
 }
 
-fn app(foo: Virtual, bar: Virtual) -> Virtual {
+fn erase(t: Virtual) -> Virtual {
+  case t {
+    VNeutral(n) -> VNeutral(erase_neutral(n))
+    VLambda(_, ZeroMode, e) ->
+      erase(e(VNeutral(VIdent("", ZeroMode, Level(0)))))
+    VLambda(x, mode, e) -> VLambda(x, mode, fn(arg) { erase(e(arg)) })
+    VPi(x, mode, a, b) -> VPi(x, mode, erase(a), fn(arg) { erase(b(arg)) })
+    VNat(_) | VNatType | VSort(_) -> t
+  }
+}
+
+fn erase_neutral(n: Neutral) -> Neutral {
+  case n {
+    VIdent(_, _, _) -> n
+    VApp(ZeroMode, a, _) -> erase_neutral(a)
+    VApp(m, a, b) -> VApp(m, erase_neutral(a), erase(b))
+  }
+}
+
+fn app(mode: BinderMode, foo: Virtual, bar: Virtual) -> Virtual {
   case foo {
-    VNeutral(neutral) -> VNeutral(VApp(neutral, bar))
+    VNeutral(neutral) -> VNeutral(VApp(mode, neutral, bar))
     VLambda(_, _, f) -> f(bar)
     _ -> panic as "impossible virtual application"
   }
@@ -37,7 +56,7 @@ pub fn eval(t: Term, env: List(Virtual)) -> Virtual {
       VPi(x, mode, eval(t, env), fn(arg) { eval(u, [arg, ..env]) })
     Binder(Lambda(mode), x, e, _) ->
       VLambda(x, mode, fn(arg) { eval(e, [arg, ..env]) })
-    Ctor2(App(_mode), foo, bar, _) -> app(eval(foo, env), eval(bar, env))
+    Ctor2(App(mode), foo, bar, _) -> app(mode, eval(foo, env), eval(bar, env))
     Binder(Let(_mode, v), _x, e, _) -> eval(e, [eval(v, env), ..env])
     Ctor0(Nat(n), _) -> VNat(n)
     Ctor0(NatT, _) -> VNatType
@@ -56,24 +75,32 @@ pub type Context {
 
 pub const empty_ctx = Context(Level(0), [], [], [])
 
-pub fn eq(lvl: Level, a: Virtual, b: Virtual) -> Bool {
+fn eq(lvl: Level, a: Virtual, b: Virtual) -> Bool {
+  eq_helper(lvl, erase(a), erase(b))
+}
+
+fn eq_helper(lvl: Level, a: Virtual, b: Virtual) -> Bool {
   case a, b {
     VSort(s1), VSort(s2) -> s1 == s2
     VPi(x, m1, t1, u1), VPi(_, m2, t2, u2) -> {
       let dummy = VNeutral(VIdent(x, m1, lvl))
-      m1 == m2 && eq(lvl, t1, t2) && eq(inc(lvl), u1(dummy), u2(dummy))
+      m1 == m2
+      && eq_helper(lvl, t1, t2)
+      && eq_helper(inc(lvl), u1(dummy), u2(dummy))
     }
     VLambda(x, m, f), b -> {
       let dummy = VNeutral(VIdent(x, m, lvl))
-      eq(inc(lvl), f(dummy), app(b, dummy))
+      eq_helper(inc(lvl), f(dummy), app(m, b, dummy))
     }
     a, VLambda(x, m, f) -> {
       let dummy = VNeutral(VIdent(x, m, lvl))
-      eq(inc(lvl), app(a, dummy), f(dummy))
+      eq_helper(inc(lvl), app(m, a, dummy), f(dummy))
     }
     VNeutral(VIdent(_, _, i)), VNeutral(VIdent(_, _, j)) -> i == j
-    VNeutral(VApp(n1, arg1)), VNeutral(VApp(n2, arg2)) ->
-      eq(lvl, VNeutral(n1), VNeutral(n2)) && eq(lvl, arg1, arg2)
+    VNeutral(VApp(m1, n1, arg1)), VNeutral(VApp(m2, n2, arg2)) ->
+      m1 == m2
+      && eq_helper(lvl, VNeutral(n1), VNeutral(n2))
+      && eq_helper(lvl, arg1, arg2)
     VNat(n), VNat(m) -> n == m
     VNatType, VNatType -> True
     _, _ -> False
