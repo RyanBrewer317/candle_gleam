@@ -262,49 +262,65 @@ pub fn type_type() -> Parser(Syntax) {
 pub fn zero_or_type_binder() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use res <- do(either(char("<"), char("{")))
+  let #(mode, end) = case res {
+    "{" -> #(ZeroMode, char("}"))
+    "<" -> #(TypeMode, char(">"))
+    _ -> panic as "impossible binder mode"
+  }
   use <- commit()
   use <- ws()
+  use x_pos <- do(get_pos())
   use mb_x <- do(
-    maybe({
-      use x <- do(pattern_string())
-      use <- ws()
-      use _ <- do(char(":"))
-      return(x)
-    }),
+    maybe(either(map(pattern_string(), Ok), map(ident_string(), Error))),
   )
-  use t <- do(lazy(expr))
-  use mode <- do(case res {
-    "{" -> {
-      use _ <- do(char("}"))
-      return(ZeroMode)
-    }
-    "<" -> {
-      use _ <- do(char(">"))
-      return(TypeMode)
-    }
-    _ -> panic as "impossible binder mode"
-  })
-  use <- ws()
-  case mb_x, t {
-    Ok(x), _ -> {
-      use res <- do(either(string("->"), string("=>")))
-      use u <- do(lazy(expr))
+  case mb_x {
+    Ok(id) -> {
+      use <- ws()
+      use res <- do(maybe(char(":")))
       case res {
-        "->" -> return(LambdaSyntax(mode, x, Ok(t), u, pos))
-        "=>" -> return(PiSyntax(mode, x, t, u, pos))
-        _ -> panic as "impossible zero or type binder"
+        Ok(_) -> {
+          let x = case id {
+            Ok(x) -> x
+            Error(x) -> x
+          }
+          use t <- do(lazy(expr))
+          use _ <- do(end)
+          use <- ws()
+          use res <- do(either(string("->"), string("=>")))
+          use u <- do(lazy(expr))
+          case res {
+            "->" -> return(LambdaSyntax(mode, x, Ok(t), u, pos))
+            "=>" -> return(PiSyntax(mode, x, t, u, pos))
+            _ -> panic as "impossible zero or type binder"
+          }
+        }
+        Error(_) -> {
+          use _ <- do(end)
+          use <- ws()
+          case id {
+            Ok(x) -> {
+              use _ <- do(string("->"))
+              use e <- do(lazy(expr))
+              return(LambdaSyntax(mode, x, Error(Nil), e, pos))
+            }
+            Error(x) -> {
+              use arrow <- do(either(string("->"), string("=>")))
+              use e <- do(lazy(expr))
+              case arrow {
+                "->" -> return(LambdaSyntax(mode, x, Error(Nil), e, pos))
+                "=>" ->
+                  return(PiSyntax(mode, "_", IdentSyntax(x, x_pos), e, pos))
+                _ -> panic as "impossible zero or type binder"
+              }
+            }
+          }
+        }
       }
     }
-    Error(Nil), IdentSyntax(x, _) -> {
-      use res <- do(either(string("->"), string("=>")))
-      use u <- do(lazy(expr))
-      case res {
-        "->" -> return(LambdaSyntax(mode, x, Error(Nil), u, pos))
-        "=>" -> return(PiSyntax(mode, "_", t, u, pos))
-        _ -> panic as "impossible zero or type binder"
-      }
-    }
-    Error(Nil), _ -> {
+    Error(Nil) -> {
+      use t <- do(lazy(expr))
+      use _ <- do(end)
+      use <- ws()
       use _ <- do(string("=>"))
       use u <- do(lazy(expr))
       return(PiSyntax(mode, "_", t, u, pos))
