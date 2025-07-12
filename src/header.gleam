@@ -49,13 +49,13 @@ pub type Syntax {
   NatTypeSyntax(pos: Pos)
   SortSyntax(Sort, pos: Pos)
   PiSyntax(BinderMode, String, Syntax, Syntax, pos: Pos)
-  JSyntax(Syntax, Syntax, Syntax, Syntax, Syntax, pos: Pos)
+  JSyntax(Syntax, Syntax, pos: Pos)
   IntersectionTypeSyntax(String, Syntax, Syntax, pos: Pos)
   IntersectionSyntax(Syntax, Syntax, Syntax, pos: Pos)
   FstSyntax(Syntax, pos: Pos)
   SndSyntax(Syntax, pos: Pos)
-  EqSyntax(Syntax, Syntax, Syntax, pos: Pos)
-  ReflSyntax(Syntax, Syntax, pos: Pos)
+  EqSyntax(Syntax, Syntax, pos: Pos)
+  ReflSyntax(Syntax, pos: Pos)
   CastSyntax(Syntax, Syntax, Syntax, pos: Pos)
   ExFalsoSyntax(Syntax, pos: Pos)
 }
@@ -71,13 +71,13 @@ pub fn get_pos(s: Syntax) -> Pos {
     NatTypeSyntax(pos) -> pos
     SortSyntax(_, pos) -> pos
     PiSyntax(_, _, _, _, pos) -> pos
-    JSyntax(_, _, _, _, _, pos) -> pos
+    JSyntax(_, _, pos) -> pos
     IntersectionTypeSyntax(_, _, _, pos) -> pos
     IntersectionSyntax(_, _, _, pos) -> pos
     FstSyntax(_, pos) -> pos
     SndSyntax(_, pos) -> pos
-    EqSyntax(_, _, _, pos) -> pos
-    ReflSyntax(_, _, pos) -> pos
+    EqSyntax(_, _, pos) -> pos
+    ReflSyntax(_, pos) -> pos
     CastSyntax(_, _, _, pos) -> pos
     ExFalsoSyntax(_, pos) -> pos
   }
@@ -126,18 +126,8 @@ pub fn pretty_syntax(s: Syntax) -> String {
     SortSyntax(KindSort, _) -> "Kind"
     PiSyntax(mode, x, t, u, _) ->
       pretty_syntax_param(SyntaxParam(mode, x, t)) <> "=> " <> pretty_syntax(u)
-    JSyntax(a, b, e, at, prop, _) ->
-      "J("
-      <> pretty_syntax(a)
-      <> ", "
-      <> pretty_syntax(b)
-      <> ", "
-      <> pretty_syntax(e)
-      <> ", "
-      <> pretty_syntax(at)
-      <> ", "
-      <> pretty_syntax(prop)
-      <> ")"
+    JSyntax(e, prop, _) ->
+      "J(" <> pretty_syntax(e) <> ", " <> pretty_syntax(prop) <> ")"
     IntersectionTypeSyntax(x, t, u, _) ->
       pretty_syntax_param(SyntaxParam(ManyMode, x, t))
       <> "& "
@@ -152,16 +142,9 @@ pub fn pretty_syntax(s: Syntax) -> String {
       <> "]"
     FstSyntax(a, _) -> ".1(" <> pretty_syntax(a) <> ")"
     SndSyntax(a, _) -> ".2(" <> pretty_syntax(a) <> ")"
-    EqSyntax(a, b, t, _) ->
-      "("
-      <> pretty_syntax(a)
-      <> ") =["
-      <> pretty_syntax(t)
-      <> "] ("
-      <> pretty_syntax(b)
-      <> ")"
-    ReflSyntax(a, t, _) ->
-      "refl(" <> pretty_syntax(a) <> "; " <> pretty_syntax(t) <> ")"
+    EqSyntax(a, b, _) ->
+      "(" <> pretty_syntax(a) <> ") = (" <> pretty_syntax(b) <> ")"
+    ReflSyntax(a, _) -> "refl(" <> pretty_syntax(a) <> ")"
     CastSyntax(a, b, eq, _) ->
       "cast("
       <> pretty_syntax(a)
@@ -203,21 +186,18 @@ pub type Ctor1 {
   Fst
   Snd
   ExFalso
+  Refl
 }
 
 pub type Ctor2 {
   App(BinderMode)
-  Refl
+  J
 }
 
 pub type Ctor3 {
   Inter
-  Eq
   Cast
-}
-
-pub type Ctor5 {
-  J
+  Eq
 }
 
 pub type Term {
@@ -227,7 +207,6 @@ pub type Term {
   Ctor1(Ctor1, Term, pos: Pos)
   Ctor2(Ctor2, Term, Term, pos: Pos)
   Ctor3(Ctor3, Term, Term, Term, pos: Pos)
-  Ctor5(Ctor5, Term, Term, Term, Term, Term, pos: Pos)
 }
 
 pub fn pretty_param(
@@ -280,8 +259,7 @@ pub fn pretty_term(term: Term) -> String {
         ZeroMode -> "{" <> pretty_term(bar) <> "}"
         TypeMode -> "<" <> pretty_term(bar) <> ">"
       }
-    Ctor2(Refl, a, t, _) ->
-      "refl(" <> pretty_term(a) <> "; " <> pretty_term(t) <> ")"
+    Ctor1(Refl, a, _) -> "refl(" <> pretty_term(a) <> ")"
     Ctor3(Inter, a, b, t, _) ->
       "["
       <> pretty_term(a)
@@ -290,14 +268,8 @@ pub fn pretty_term(term: Term) -> String {
       <> "; "
       <> pretty_term(t)
       <> "]"
-    Ctor3(Eq, a, b, t, _) ->
-      "("
-      <> pretty_term(a)
-      <> ") =["
-      <> pretty_term(t)
-      <> "] ("
-      <> pretty_term(b)
-      <> ")"
+    Ctor3(Eq, a, b, _t, _) ->
+      "(" <> pretty_term(a) <> ") = (" <> pretty_term(b) <> ")"
     Ctor3(Cast, a, b, eq, _) ->
       "cast("
       <> pretty_term(a)
@@ -306,18 +278,8 @@ pub fn pretty_term(term: Term) -> String {
       <> ", "
       <> pretty_term(eq)
       <> ")"
-    Ctor5(J, a, b, eq, at, p, _) ->
-      "J("
-      <> pretty_term(a)
-      <> ", "
-      <> pretty_term(b)
-      <> ", "
-      <> pretty_term(eq)
-      <> ", "
-      <> pretty_term(at)
-      <> ", "
-      <> pretty_term(p)
-      <> ")"
+    Ctor2(J, eq, p, _) ->
+      "J(" <> pretty_term(eq) <> ", " <> pretty_term(p) <> ")"
   }
 }
 
@@ -327,53 +289,115 @@ pub fn inc(lvl: Level) -> Level {
 
 pub type Value {
   VNeutral(Neutral)
-  VSort(Sort)
-  VNat(Int)
-  VNatType
-  VPi(String, BinderMode, Value, fn(Value) -> Value)
-  VLambda(String, BinderMode, fn(Value) -> Value)
+  VSort(Sort, Pos)
+  VNat(Int, Pos)
+  VNatType(Pos)
+  VPi(String, BinderMode, Value, fn(Value) -> Value, Pos)
+  VLambda(String, BinderMode, fn(Value) -> Value, Pos)
+  VEq(Value, Value, Value, Pos)
+  VRefl(Value, Pos)
+  VJ(Value, Value, Pos)
 }
 
 pub type Neutral {
-  VIdent(String, BinderMode, Level)
-  VApp(BinderMode, Neutral, Value)
+  VIdent(String, BinderMode, Level, Pos)
+  VApp(BinderMode, Neutral, Value, Pos)
+}
+
+pub fn value_pos(v: Value) -> Pos {
+  case v {
+    VNeutral(n) -> neutral_pos(n)
+    VSort(_, pos) -> pos
+    VNat(_, pos) -> pos
+    VNatType(pos) -> pos
+    VPi(_, _, _, _, pos) -> pos
+    VLambda(_, _, _, pos) -> pos
+    VEq(_, _, _, pos) -> pos
+    VRefl(_, pos) -> pos
+    VJ(_, _, pos) -> pos
+  }
+}
+
+pub fn neutral_pos(n: Neutral) -> Pos {
+  case n {
+    VIdent(_, _, _, pos) -> pos
+    VApp(_, _, _, pos) -> pos
+  }
 }
 
 fn pretty_neutral(n: Neutral) -> String {
   case n {
-    VIdent(x, _, _) -> x
-    VApp(ManyMode, a, b) ->
-      "(" <> pretty_neutral(a) <> ")(" <> pretty_virtual(b) <> ")"
-    VApp(ZeroMode, a, b) ->
-      "(" <> pretty_neutral(a) <> "){" <> pretty_virtual(b) <> "}"
-    VApp(TypeMode, a, b) ->
-      "(" <> pretty_neutral(a) <> ")<" <> pretty_virtual(b) <> ">"
+    VIdent(x, _, _, _) -> x
+    VApp(ManyMode, a, b, _) ->
+      "(" <> pretty_neutral(a) <> ")(" <> pretty_value(b) <> ")"
+    VApp(ZeroMode, a, b, _) ->
+      "(" <> pretty_neutral(a) <> "){" <> pretty_value(b) <> "}"
+    VApp(TypeMode, a, b, _) ->
+      "(" <> pretty_neutral(a) <> ")<" <> pretty_value(b) <> ">"
   }
 }
 
-pub fn pretty_virtual(v: Value) -> String {
+pub fn pretty_value(v: Value) -> String {
   case v {
     VNeutral(n) -> pretty_neutral(n)
-    VSort(TypeSort) -> "Type"
-    VSort(KindSort) -> "Kind"
-    VNat(n) -> int.to_string(n)
-    VNatType -> "Nat"
-    VPi("_", mode, a, b) ->
+    VSort(TypeSort, _) -> "Type"
+    VSort(KindSort, _) -> "Kind"
+    VNat(n, _) -> int.to_string(n)
+    VNatType(_) -> "Nat"
+    VPi("_", mode, a, b, pos) ->
       "("
-      <> pretty_virtual(a)
+      <> pretty_value(a)
       <> ")=> "
-      <> pretty_virtual(b(VNeutral(VIdent("_", mode, Level(0)))))
-    VPi(x, mode, a, b) ->
+      <> pretty_value(b(VNeutral(VIdent("_", mode, Level(0), pos))))
+    VPi(x, mode, a, b, pos) ->
       "("
       <> x
       <> ": "
-      <> pretty_virtual(a)
+      <> pretty_value(a)
       <> ")=> "
-      <> pretty_virtual(b(VNeutral(VIdent(x, mode, Level(0)))))
-    VLambda(x, mode, f) ->
-      "("
-      <> x
-      <> ")-> "
-      <> pretty_virtual(f(VNeutral(VIdent(x, mode, Level(0)))))
+      <> pretty_value(b(VNeutral(VIdent(x, mode, Level(0), pos))))
+    VLambda(x, mode, f, pos) ->
+      {
+        case mode {
+          ManyMode -> "(" <> x <> ")"
+          ZeroMode -> "{" <> x <> "}"
+          TypeMode -> "<" <> x <> ">"
+        }
+      }
+      <> "-> "
+      <> pretty_value(f(VNeutral(VIdent(x, mode, Level(0), pos))))
+    VEq(a, b, _t, _) ->
+      "(" <> pretty_value(a) <> ") = (" <> pretty_value(b) <> ")"
+    VRefl(a, _) -> "refl(" <> pretty_value(a) <> ")"
+    VJ(e, p, _) -> "J(" <> pretty_value(e) <> ", " <> pretty_value(p) <> ")"
+  }
+}
+
+pub fn quote(size: Level, v: Value) -> Term {
+  case v {
+    VNeutral(n) -> quote_neutral(size, n)
+    VSort(s, p) -> Ctor0(Sort(s), p)
+    VNat(n, p) -> Ctor0(Nat(n), p)
+    VNatType(p) -> Ctor0(NatT, p)
+    VPi(x, mode, a, b, p) -> {
+      let n = VNeutral(VIdent(x, mode, size, p))
+      Binder(Pi(mode, quote(size, a)), x, quote(inc(size), b(n)), p)
+    }
+    VLambda(x, mode, e, p) -> {
+      let n = VNeutral(VIdent(x, mode, size, p))
+      Binder(Lambda(mode), x, quote(inc(size), e(n)), p)
+    }
+    VEq(a, b, t, p) ->
+      Ctor3(Eq, quote(size, a), quote(size, b), quote(size, t), p)
+    VRefl(a, p) -> Ctor1(Refl, quote(size, a), p)
+    VJ(e, pred, pos) -> Ctor2(J, quote(size, e), quote(size, pred), pos)
+  }
+}
+
+fn quote_neutral(size: Level, n: Neutral) -> Term {
+  case n {
+    VIdent(x, mode, lvl, pos) -> Ident(mode, lvl_to_idx(size, lvl), x, pos)
+    VApp(mode, n, v, p) ->
+      Ctor2(App(mode), quote_neutral(size, n), quote(size, v), p)
   }
 }

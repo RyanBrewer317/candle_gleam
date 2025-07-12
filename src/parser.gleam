@@ -3,9 +3,9 @@ import gleam/list
 import gleam/string
 import header.{
   type BinderMode, type Pos, type Syntax, type SyntaxParam, AppSyntax, DefSyntax,
-  IdentSyntax, IntersectionTypeSyntax, LambdaSyntax, LetSyntax, ManyMode,
-  NatSyntax, NatTypeSyntax, PiSyntax, Pos, SortSyntax, SyntaxParam, TypeMode,
-  TypeSort, ZeroMode,
+  EqSyntax, IdentSyntax, IntersectionTypeSyntax, JSyntax, LambdaSyntax,
+  LetSyntax, ManyMode, NatSyntax, NatTypeSyntax, PiSyntax, Pos, ReflSyntax,
+  SortSyntax, SyntaxParam, TypeMode, TypeSort, ZeroMode,
 }
 
 pub type Parser(a) {
@@ -448,7 +448,7 @@ pub fn let_binding() -> Parser(Syntax) {
   use <- ws()
   use _ <- do(char(":") |> label(": or parameter"))
   use t <- do(lazy(expr))
-  use _ <- do(char("="))
+  use _ <- do(string(":="))
   use v <- do(lazy(expr))
   use _ <- do(keyword("in"))
   use e <- do(lazy(expr))
@@ -461,9 +461,32 @@ pub fn let_binding() -> Parser(Syntax) {
   }
 }
 
+pub fn refl() -> Parser(Syntax) {
+  use pos <- do(get_pos())
+  use _ <- do(keyword("refl"))
+  use <- ws()
+  use _ <- do(char("("))
+  use a <- do(lazy(expr))
+  use _ <- do(char(")"))
+  return(ReflSyntax(a, pos))
+}
+
+pub fn j() -> Parser(Syntax) {
+  use pos <- do(get_pos())
+  use _ <- do(keyword("J"))
+  use <- ws()
+  use _ <- do(char("("))
+  use eq <- do(lazy(expr))
+  use _ <- do(char(","))
+  use p <- do(lazy(expr))
+  use _ <- do(char(")"))
+  return(JSyntax(eq, p, pos))
+}
+
 pub type Suffix {
   AppSuffix(BinderMode, Syntax, pos: Pos)
   PiSuffix(Syntax, pos: Pos)
+  EqSuffix(Syntax, pos: Pos)
 }
 
 pub fn expr() -> Parser(Syntax) {
@@ -476,6 +499,8 @@ pub fn expr() -> Parser(Syntax) {
       parens(),
       zero_or_type_binder(),
       let_binding(),
+      refl(),
+      j(),
       ident(),
       relevant_but_ignored(),
     ]),
@@ -517,6 +542,13 @@ pub fn expr() -> Parser(Syntax) {
           use rett <- do(lazy(expr))
           return(PiSuffix(rett, pos))
         },
+        {
+          use pos <- do(get_pos())
+          use _ <- do(char("="))
+          use <- commit()
+          use b <- do(lazy(expr))
+          return(EqSuffix(b, pos))
+        },
       ])
     }),
   )
@@ -527,6 +559,7 @@ pub fn expr() -> Parser(Syntax) {
         case suffix {
           AppSuffix(mode, arg, pos) -> AppSyntax(mode, ex, arg, pos)
           PiSuffix(rett, pos) -> PiSyntax(ManyMode, "_", ex, rett, pos)
+          EqSuffix(b, pos) -> EqSyntax(ex, b, pos)
         }
       })
   }
