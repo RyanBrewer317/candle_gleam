@@ -6,7 +6,7 @@ import header.{
   EqSyntax, FstSyntax, IdentSyntax, IntersectionSyntax, IntersectionTypeSyntax,
   LambdaSyntax, LetSyntax, ManyMode, NatSyntax, NatTypeSyntax, PiSyntax, Pos,
   PsiSyntax, ReflSyntax, SndSyntax, SortSyntax, SyntaxParam, TypeMode, TypeSort,
-  ZeroMode,
+  ZeroMode, CastSyntax
 }
 
 pub type Parser(a) {
@@ -493,6 +493,21 @@ pub fn intersection() -> Parser(Syntax) {
   use b <- do(lazy(expr))
   use _ <- do(char("]"))
   return(IntersectionSyntax(a, b, pos))
+}
+
+pub fn cast() -> Parser(Syntax) {
+  use pos <- do(get_pos())
+  use _ <- do(keyword("cast"))
+  use <- commit()
+  use <- ws()
+  use _ <- do(char("("))
+  use a <- do(lazy(expr))
+  use _ <- do(char(","))
+  use inter <- do(lazy(expr))
+  use _ <- do(char(","))
+  use eq <- do(lazy(expr))
+  use _ <- do(char(")"))
+  return(CastSyntax(a, inter, eq, pos))
 }
 
 pub type Suffix {

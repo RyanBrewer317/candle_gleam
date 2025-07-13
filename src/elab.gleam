@@ -8,7 +8,7 @@ import header.{
   NatTypeSyntax, Pi, PiSyntax, Psi, PsiSyntax, Refl, ReflSyntax, Snd, SndSyntax,
   Sort, SortSyntax, TypeMode, TypeSort, VApp, VEq, VFst, VIdent, VInter, VInterT,
   VLambda, VNat, VNatType, VNeutral, VPi, VPsi, VRefl, VSnd, VSort, ZeroMode,
-  inc, pretty_mode, pretty_pos, pretty_term, pretty_value,
+  inc, pretty_mode, pretty_pos, pretty_term, pretty_value, Cast, CastSyntax, VCast
 }
 
 fn erase(t: Value) -> Value {
@@ -23,6 +23,7 @@ fn erase(t: Value) -> Value {
     VRefl(_, p) -> VLambda("x", ManyMode, fn(x) { x }, p)
     VInter(a, _, _) -> erase(a)
     VInterT(x, a, b, p) -> VInterT(x, erase(a), fn(arg) { erase(b(arg)) }, p)
+    VCast(a, _, _, _) -> erase(a)
     VNat(_, _) | VNatType(_) | VSort(_, _) -> t
   }
 }
@@ -105,6 +106,7 @@ pub fn eval(t: Term, env: List(Value)) -> Value {
       VInterT(x, eval(a, env), fn(arg) { eval(b, [arg, ..env]) }, pos)
     Ctor1(Fst, a, pos) -> fst(pos, eval(a, env))
     Ctor1(Snd, a, pos) -> snd(pos, eval(a, env))
+    Ctor3(Cast, a, inter, eq, pos) -> VCast(eval(a, env), eval(inter, env), eval(eq, env), pos)
     _ -> todo
   }
 }
@@ -159,6 +161,7 @@ fn eq_helper(lvl: Level, a: Value, b: Value) -> Bool {
       eqh(VNeutral(a1), VNeutral(a2))
     VNeutral(VSnd(a1, _)), VNeutral(VSnd(a2, _)) ->
       eqh(VNeutral(a1), VNeutral(a2))
+    VCast(a1, inter1, eq1, _), VCast(a2, inter2, eq2, _) -> eqh(a1, a2) && eqh(inter1, inter2) && eqh(eq1, eq2)
     _, _ -> False
   }
 }
@@ -310,6 +313,14 @@ pub fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
           )
       })
       Ok(Ctor2(Inter, a2, b2, pos))
+    }
+    CastSyntax(a, inter, eq, pos), VInterT(_, at, _, _) as intert -> {
+      use a2 <- result.try(check(ctx, a, at))
+      let a3 = eval(a2, ctx.env)
+      use inter2 <- result.try(check(ctx, inter, intert))
+      let inter3 = eval(inter2, ctx.env)
+      use eq2 <- result.try(check(ctx, eq, VEq(a3, fst(pos, inter3), at, pos)))
+      Ok(Ctor3(Cast, a2, inter2, eq2, pos))
     }
     s, ty -> {
       use #(v, ty2) <- result.try(infer(ctx, s))
@@ -579,6 +590,19 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
         VInterT(_, _, b, _) -> Ok(#(Ctor1(Snd, a2, pos), b(fst(pos, a3))))
         _ ->
           Error("Projection requires intersection (" <> pretty_pos(pos) <> ")")
+      }
+    }
+    CastSyntax(a, inter, eq, pos) -> {
+      use #(inter2, intert) <- result.try(infer(ctx, inter))
+      case intert {
+        VInterT(_, at, _, _) -> {
+          let inter3 = eval(inter2, ctx.env)
+          use a2 <- result.try(check(ctx, a, at))
+          let a3 = eval(a2, ctx.env)
+          use eq2 <- result.try(check(ctx, eq, VEq(a3, fst(pos, inter3), at, pos)))
+          Ok(#(Ctor3(Cast, a2, inter2, eq2, pos), intert))
+        }
+        _ -> Error("cast requires an intersection in the second argument (" <> pretty_pos(pos) <> ")")
       }
     }
     _ -> todo as { header.pretty_syntax(s) }
