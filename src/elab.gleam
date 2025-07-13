@@ -519,6 +519,11 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       let t2 = header.quote(ctx.level, t)
       Ok(#(Ctor3(Eq, a2, b2, t2, pos), VSort(TypeSort, pos)))
     }
+    ReflSyntax(a, pos) -> {
+      use #(a2, t) <- result.try(infer(ctx, a))
+      let a3 = eval(a2, ctx.env)
+      Ok(#(Ctor1(Refl, a2, pos), VEq(a3, a3, t, pos)))
+    }
     PsiSyntax(e, p, pos) -> {
       use #(e2, _et) <- result.try(infer(ctx, e))
       case e2 {
@@ -574,6 +579,16 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
         )
       use b2 <- result.try(check(ctx2, b, VSort(TypeSort, pos)))
       Ok(#(Binder(InterT(a2), x, b2, pos), VSort(TypeSort, pos)))
+    }
+    IntersectionSyntax(a, b, pos) -> {
+      use #(a2, at) <- result.try(infer(ctx, a))
+      let a3 = eval(a2, ctx.env)
+      use #(b2, bt) <- result.try(infer(ctx, b))
+      let b3 = eval(b2, ctx.env)
+      case eq(ctx.level, a3, b3) {
+        True -> Ok(#(Ctor2(Inter, a2, b2, pos), VInterT("_", at, fn(_) { bt }, pos)))
+        False -> Error("Intersection components must be equal (" <> pretty_pos(pos) <> ")")
+      }
     }
     FstSyntax(a, pos) -> {
       use #(a2, at) <- result.try(infer(ctx, a))
