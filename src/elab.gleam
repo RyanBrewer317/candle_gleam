@@ -3,12 +3,12 @@ import header.{
   type BinderMode, type Index, type Level, type Neutral, type Pos, type Syntax,
   type Term, type Value, App, AppSyntax, Binder, Ctor0, Ctor1, Ctor2, Ctor3,
   DefSyntax, Eq, EqSyntax, Fst, FstSyntax, Ident, IdentSyntax, Index, Inter,
-  InterT, IntersectionSyntax, IntersectionTypeSyntax, J, JSyntax, KindSort,
-  Lambda, LambdaSyntax, Let, LetSyntax, Level, ManyMode, Nat, NatSyntax, NatT,
-  NatTypeSyntax, Pi, PiSyntax, Refl, ReflSyntax, Snd, SndSyntax, Sort,
-  SortSyntax, TypeMode, TypeSort, VApp, VEq, VFst, VIdent, VInter, VInterT, VJ,
-  VLambda, VNat, VNatType, VNeutral, VPi, VRefl, VSnd, VSort, ZeroMode, inc,
-  pretty_mode, pretty_pos, pretty_term, pretty_value,
+  InterT, IntersectionSyntax, IntersectionTypeSyntax, KindSort, Lambda,
+  LambdaSyntax, Let, LetSyntax, Level, ManyMode, Nat, NatSyntax, NatT,
+  NatTypeSyntax, Pi, PiSyntax, Psi, PsiSyntax, Refl, ReflSyntax, Snd, SndSyntax,
+  Sort, SortSyntax, TypeMode, TypeSort, VApp, VEq, VFst, VIdent, VInter, VInterT,
+  VLambda, VNat, VNatType, VNeutral, VPi, VPsi, VRefl, VSnd, VSort, ZeroMode,
+  inc, pretty_mode, pretty_pos, pretty_term, pretty_value,
 }
 
 fn erase(t: Value) -> Value {
@@ -21,10 +21,7 @@ fn erase(t: Value) -> Value {
       VPi(x, mode, erase(a), fn(arg) { erase(b(arg)) }, p)
     VEq(a, b, t, p) -> VEq(erase(a), erase(b), erase(t), p)
     VRefl(_, p) -> VLambda("x", ManyMode, fn(x) { x }, p)
-    VJ(e, _, _) -> erase(e)
     VInter(a, _, _) -> erase(a)
-    VFst(a, _) -> erase(a)
-    VSnd(a, _) -> erase(a)
     VInterT(x, a, b, p) -> VInterT(x, erase(a), fn(arg) { erase(b(arg)) }, p)
     VNat(_, _) | VNatType(_) | VSort(_, _) -> t
   }
@@ -35,6 +32,9 @@ fn erase_neutral(n: Neutral) -> Neutral {
     VIdent(_, _, _, _) -> n
     VApp(ZeroMode, a, _, _) -> erase_neutral(a)
     VApp(m, a, b, p) -> VApp(m, erase_neutral(a), erase(b), p)
+    VPsi(e, _, _) -> erase_neutral(e)
+    VFst(a, _) -> erase_neutral(a)
+    VSnd(a, _) -> erase_neutral(a)
   }
 }
 
@@ -43,7 +43,31 @@ fn app(mode: BinderMode, foo: Value, bar: Value) -> Value {
     VNeutral(neutral) ->
       VNeutral(VApp(mode, neutral, bar, header.value_pos(bar)))
     VLambda(_, _, f, _) -> f(bar)
-    _ -> panic as "impossible virtual application"
+    _ -> panic as "impossible value application"
+  }
+}
+
+fn psi(pos: Pos, eq: Value, pred: Value) -> Value {
+  case eq {
+    VNeutral(neutral) -> VNeutral(VPsi(neutral, pred, pos))
+    VEq(_, _, _, _) -> VLambda("x", ManyMode, fn(x) { x }, pos)
+    _ -> panic as "impossible equality elimination"
+  }
+}
+
+fn fst(pos: Pos, inter: Value) -> Value {
+  case inter {
+    VNeutral(neutral) -> VNeutral(VFst(neutral, pos))
+    VInter(a, _, _) -> a
+    _ -> panic as "impossible value projection"
+  }
+}
+
+fn snd(pos: Pos, inter: Value) -> Value {
+  case inter {
+    VNeutral(neutral) -> VNeutral(VSnd(neutral, pos))
+    VInter(_, b, _) -> b
+    _ -> panic as "impossible value projection"
   }
 }
 
@@ -75,12 +99,12 @@ pub fn eval(t: Term, env: List(Value)) -> Value {
     Ctor3(Eq, a, b, t, pos) ->
       VEq(eval(a, env), eval(b, env), eval(t, env), pos)
     Ctor1(Refl, a, pos) -> VRefl(eval(a, env), pos)
-    Ctor2(J, e, p, pos) -> VJ(eval(e, env), eval(p, env), pos)
+    Ctor2(Psi, e, p, pos) -> psi(pos, eval(e, env), eval(p, env))
     Ctor2(Inter, a, b, pos) -> VInter(eval(a, env), eval(b, env), pos)
     Binder(InterT(a), x, b, pos) ->
       VInterT(x, eval(a, env), fn(arg) { eval(b, [arg, ..env]) }, pos)
-    Ctor1(Fst, a, pos) -> VFst(eval(a, env), pos)
-    Ctor1(Snd, a, pos) -> VSnd(eval(a, env), pos)
+    Ctor1(Fst, a, pos) -> fst(pos, eval(a, env))
+    Ctor1(Snd, a, pos) -> snd(pos, eval(a, env))
     _ -> todo
   }
 }
@@ -124,14 +148,17 @@ fn eq_helper(lvl: Level, a: Value, b: Value) -> Bool {
     VEq(a1, b1, t1, _), VEq(a2, b2, t2, _) ->
       eqh(a1, a2) && eqh(b1, b2) && eqh(t1, t2)
     VRefl(a1, _), VRefl(a2, _) -> eqh(a1, a2)
-    VJ(e1, p1, _), VJ(e2, p2, _) -> eqh(e1, e2) && eqh(p1, p2)
+    VNeutral(VPsi(e1, p1, _)), VNeutral(VPsi(e2, p2, _)) ->
+      eqh(VNeutral(e1), VNeutral(e2)) && eqh(p1, p2)
     VInter(a1, b1, _), VInter(a2, b2, _) -> eqh(a1, a2) && eqh(b1, b2)
     VInterT(x, a1, b1, pos), VInterT(_, a2, b2, _) -> {
       let dummy = VNeutral(VIdent(x, TypeMode, lvl, pos))
       eqh(a1, a2) && eq_helper(inc(lvl), b1(dummy), b2(dummy))
     }
-    VFst(a1, _), VFst(a2, _) -> eqh(a1, a2)
-    VSnd(a1, _), VSnd(a2, _) -> eqh(a1, a2)
+    VNeutral(VFst(a1, _)), VNeutral(VFst(a2, _)) ->
+      eqh(VNeutral(a1), VNeutral(a2))
+    VNeutral(VSnd(a1, _)), VNeutral(VSnd(a2, _)) ->
+      eqh(VNeutral(a1), VNeutral(a2))
     _, _ -> False
   }
 }
@@ -151,7 +178,7 @@ fn rel_occurs(t: Term, x: Index) -> Result(Pos, Nil) {
     Ctor1(Refl, _, _) -> Error(Nil)
     Ctor1(_, a, _) -> rel_occurs(a, x)
     Ctor2(App(ZeroMode), a, _, _) -> rel_occurs(a, x)
-    Ctor2(J, _, _, _) -> Error(Nil)
+    Ctor2(Psi, _, _, _) -> Error(Nil)
     Ctor2(_, a, b, _) -> result.or(rel_occurs(a, x), rel_occurs(b, x))
     Ctor3(_, a, b, c, _) ->
       rel_occurs(a, x)
@@ -481,7 +508,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       let t2 = header.quote(ctx.level, t)
       Ok(#(Ctor3(Eq, a2, b2, t2, pos), VSort(TypeSort, pos)))
     }
-    JSyntax(e, p, pos) -> {
+    PsiSyntax(e, p, pos) -> {
       use #(e2, _et) <- result.try(infer(ctx, e))
       case e2 {
         Ctor3(Eq, a, b, t, _) -> {
@@ -510,7 +537,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
           let p3 = eval(p2, ctx.env)
           let e3 = eval(e2, ctx.env)
           Ok(#(
-            Ctor2(J, e2, p2, pos),
+            Ctor2(Psi, e2, p2, pos),
             VPi(
               "_",
               ManyMode,
@@ -549,7 +576,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       use #(a2, at) <- result.try(infer(ctx, a))
       let a3 = eval(a2, ctx.env)
       case at {
-        VInterT(_, _, b, _) -> Ok(#(Ctor1(Snd, a2, pos), b(VFst(a3, pos))))
+        VInterT(_, _, b, _) -> Ok(#(Ctor1(Snd, a2, pos), b(fst(pos, a3))))
         _ ->
           Error("Projection requires intersection (" <> pretty_pos(pos) <> ")")
       }

@@ -4,8 +4,8 @@ import gleam/string
 import header.{
   type BinderMode, type Pos, type Syntax, type SyntaxParam, AppSyntax, DefSyntax,
   EqSyntax, FstSyntax, IdentSyntax, IntersectionSyntax, IntersectionTypeSyntax,
-  JSyntax, LambdaSyntax, LetSyntax, ManyMode, NatSyntax, NatTypeSyntax, PiSyntax,
-  Pos, ReflSyntax, SndSyntax, SortSyntax, SyntaxParam, TypeMode, TypeSort,
+  LambdaSyntax, LetSyntax, ManyMode, NatSyntax, NatTypeSyntax, PiSyntax, Pos,
+  PsiSyntax, ReflSyntax, SndSyntax, SortSyntax, SyntaxParam, TypeMode, TypeSort,
   ZeroMode,
 }
 
@@ -472,16 +472,16 @@ pub fn refl() -> Parser(Syntax) {
   return(ReflSyntax(a, pos))
 }
 
-pub fn j() -> Parser(Syntax) {
+pub fn psi() -> Parser(Syntax) {
   use pos <- do(get_pos())
-  use _ <- do(keyword("J"))
+  use _ <- do(keyword("Psi"))
   use <- ws()
   use _ <- do(char("("))
   use eq <- do(lazy(expr))
   use _ <- do(char(","))
   use p <- do(lazy(expr))
   use _ <- do(char(")"))
-  return(JSyntax(eq, p, pos))
+  return(PsiSyntax(eq, p, pos))
 }
 
 pub fn intersection() -> Parser(Syntax) {
@@ -515,7 +515,7 @@ pub fn expr() -> Parser(Syntax) {
       zero_or_type_binder(),
       let_binding(),
       refl(),
-      j(),
+      psi(),
       intersection(),
       ident(),
       relevant_but_ignored(),
