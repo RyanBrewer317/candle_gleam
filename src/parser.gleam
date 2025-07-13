@@ -36,7 +36,7 @@ pub fn parse(src: String, parser: Parser(a)) -> Result(a, String) {
   }
 }
 
-pub fn satisfy(pred: fn(String) -> Bool) -> Parser(String) {
+fn satisfy(pred: fn(String) -> Bool) -> Parser(String) {
   Parser(fn(pos, chars) {
     case chars {
       [] -> Error(Normal("unexpected EOF", pos, ""))
@@ -57,7 +57,7 @@ pub fn satisfy(pred: fn(String) -> Bool) -> Parser(String) {
   })
 }
 
-pub fn map(parser: Parser(a), f: fn(a) -> b) -> Parser(b) {
+fn map(parser: Parser(a), f: fn(a) -> b) -> Parser(b) {
   Parser(fn(pos, chars) {
     case parser.run(pos, chars) {
       Ok(#(pos2, rest, a)) -> Ok(#(pos2, rest, f(a)))
@@ -66,7 +66,7 @@ pub fn map(parser: Parser(a), f: fn(a) -> b) -> Parser(b) {
   })
 }
 
-pub fn either(p1: Parser(a), p2: Parser(a)) -> Parser(a) {
+fn either(p1: Parser(a), p2: Parser(a)) -> Parser(a) {
   Parser(fn(pos, chars) {
     case p1.run(pos, chars) {
       Ok(out) -> Ok(out)
@@ -76,7 +76,7 @@ pub fn either(p1: Parser(a), p2: Parser(a)) -> Parser(a) {
   })
 }
 
-pub fn many0(parser: Parser(a)) -> Parser(List(a)) {
+fn many0(parser: Parser(a)) -> Parser(List(a)) {
   Parser(fn(pos, chars) {
     case parser.run(pos, chars) {
       Ok(#(pos2, rest, a)) ->
@@ -91,7 +91,7 @@ pub fn many0(parser: Parser(a)) -> Parser(List(a)) {
   })
 }
 
-pub fn do(p1: Parser(a), f: fn(a) -> Parser(b)) -> Parser(b) {
+fn do(p1: Parser(a), f: fn(a) -> Parser(b)) -> Parser(b) {
   Parser(fn(pos, chars) {
     case p1.run(pos, chars) {
       Ok(#(pos2, rest, a)) -> f(a).run(pos2, rest)
@@ -100,17 +100,17 @@ pub fn do(p1: Parser(a), f: fn(a) -> Parser(b)) -> Parser(b) {
   })
 }
 
-pub fn return(a: a) -> Parser(a) {
+fn return(a: a) -> Parser(a) {
   Parser(fn(pos, chars) { Ok(#(pos, chars, a)) })
 }
 
-pub fn many(parser: Parser(a)) -> Parser(List(a)) {
+fn many(parser: Parser(a)) -> Parser(List(a)) {
   use first <- do(parser)
   use rest <- do(many0(parser))
   return([first, ..rest])
 }
 
-pub fn label(parser: Parser(a), expected: String) -> Parser(a) {
+fn label(parser: Parser(a), expected: String) -> Parser(a) {
   Parser(fn(pos, chars) {
     case parser.run(pos, chars) {
       Ok(out) -> Ok(out)
@@ -120,7 +120,7 @@ pub fn label(parser: Parser(a), expected: String) -> Parser(a) {
   })
 }
 
-pub fn commit(k: fn() -> Parser(a)) -> Parser(a) {
+fn commit(k: fn() -> Parser(a)) -> Parser(a) {
   Parser(fn(pos, chars) {
     case k().run(pos, chars) {
       Ok(out) -> Ok(out)
@@ -130,39 +130,39 @@ pub fn commit(k: fn() -> Parser(a)) -> Parser(a) {
   })
 }
 
-pub fn char(c: String) -> Parser(String) {
+fn char(c: String) -> Parser(String) {
   satisfy(fn(c2) { c == c2 }) |> label(c)
 }
 
-pub fn lowercase() -> Parser(String) {
+fn lowercase() -> Parser(String) {
   satisfy(fn(c) {
     string.contains(does: "abcdefghijklmnopqrstuvwxyz", contain: c)
   })
 }
 
-pub fn uppercase() -> Parser(String) {
+fn uppercase() -> Parser(String) {
   satisfy(fn(c) {
     string.contains(does: "ABCDEFGHIJKLMNOPQRSTUVWXYZ", contain: c)
   })
 }
 
-pub fn digit() -> Parser(String) {
+fn digit() -> Parser(String) {
   satisfy(fn(c) { string.contains(does: "1234567890", contain: c) })
 }
 
-pub fn alphanum() -> Parser(String) {
+fn alphanum() -> Parser(String) {
   either(lowercase(), either(uppercase(), digit()))
 }
 
-pub fn get_pos() -> Parser(Pos) {
+fn get_pos() -> Parser(Pos) {
   Parser(fn(pos, chars) { Ok(#(pos, chars, pos)) })
 }
 
-pub fn lazy(thunk: fn() -> Parser(a)) -> Parser(a) {
+fn lazy(thunk: fn() -> Parser(a)) -> Parser(a) {
   Parser(fn(pos, chars) { thunk().run(pos, chars) })
 }
 
-pub fn any_of(parsers: List(Parser(a))) -> Parser(a) {
+fn any_of(parsers: List(Parser(a))) -> Parser(a) {
   case parsers {
     [] -> panic as "any_of on empty parser list"
     [p] -> p
@@ -170,7 +170,7 @@ pub fn any_of(parsers: List(Parser(a))) -> Parser(a) {
   }
 }
 
-pub fn string(s: String) -> Parser(String) {
+fn string(s: String) -> Parser(String) {
   map(string_helper(s), fn(_) { s })
   |> label(s)
 }
@@ -183,7 +183,7 @@ fn string_helper(s: String) -> Parser(String) {
   }
 }
 
-pub fn maybe(parser: Parser(a)) -> Parser(Result(a, Nil)) {
+fn maybe(parser: Parser(a)) -> Parser(Result(a, Nil)) {
   Parser(fn(pos, chars) {
     case parser.run(pos, chars) {
       Ok(#(pos2, rest, a)) -> Ok(#(pos2, rest, Ok(a)))
@@ -193,7 +193,7 @@ pub fn maybe(parser: Parser(a)) -> Parser(Result(a, Nil)) {
   })
 }
 
-pub fn keyword(s: String) {
+fn keyword(s: String) {
   use _ <- do(string(s))
   Parser(fn(pos, chars) {
     case any_of([lowercase(), uppercase(), digit()]).run(pos, chars) {
@@ -203,18 +203,18 @@ pub fn keyword(s: String) {
   })
 }
 
-pub fn ws(k: fn() -> Parser(a)) -> Parser(a) {
+fn ws(k: fn() -> Parser(a)) -> Parser(a) {
   use _ <- do(many0(any_of([char(" "), char("\n"), char("\t")])))
   k()
 }
 
-pub fn ident_string() -> Parser(String) {
+fn ident_string() -> Parser(String) {
   use first <- do(lowercase())
   use rest <- do(many0(either(char("_"), alphanum())))
   return(first <> string.concat(rest))
 }
 
-pub fn pattern_string() -> Parser(String) {
+fn pattern_string() -> Parser(String) {
   either(ident_string(), {
     use _ <- do(char("_"))
     use res <- do(maybe(ident_string()))
@@ -226,7 +226,7 @@ pub fn pattern_string() -> Parser(String) {
   |> label("identifier")
 }
 
-pub fn ident() -> Parser(Syntax) {
+fn ident() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use s <- do(ident_string())
   use <- ws()
@@ -241,26 +241,26 @@ pub fn ident() -> Parser(Syntax) {
   }
 }
 
-pub fn nat() -> Parser(Syntax) {
+fn nat() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use n_str <- do(many(digit()))
   let assert Ok(n) = int.parse(string.concat(n_str))
   return(NatSyntax(n, pos))
 }
 
-pub fn nat_type() -> Parser(Syntax) {
+fn nat_type() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use _ <- do(keyword("Nat"))
   return(NatTypeSyntax(pos))
 }
 
-pub fn type_type() -> Parser(Syntax) {
+fn type_type() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use _ <- do(keyword("Type"))
   return(SortSyntax(TypeSort, pos))
 }
 
-pub fn relevant_but_ignored() -> Parser(Syntax) {
+fn relevant_but_ignored() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use x <- do(pattern_string())
   use <- commit()
@@ -270,7 +270,7 @@ pub fn relevant_but_ignored() -> Parser(Syntax) {
   return(LambdaSyntax(ManyMode, x, Error(Nil), e, pos))
 }
 
-pub fn zero_or_type_binder() -> Parser(Syntax) {
+fn zero_or_type_binder() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use res <- do(either(char("<"), char("{")))
   let #(mode, end) = case res {
@@ -339,7 +339,7 @@ pub fn zero_or_type_binder() -> Parser(Syntax) {
   }
 }
 
-pub fn parens() -> Parser(Syntax) {
+fn parens() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use _ <- do(char("("))
   use <- commit()
@@ -389,7 +389,7 @@ pub fn parens() -> Parser(Syntax) {
   }
 }
 
-pub fn parse_param() -> Parser(SyntaxParam) {
+fn parse_param() -> Parser(SyntaxParam) {
   use <- ws()
   use res <- do(any_of([char("("), char("{"), char("<")]))
   use <- ws()
@@ -438,7 +438,7 @@ fn build_lambda(pos: Pos, params: List(SyntaxParam), body: Syntax) -> Syntax {
   }
 }
 
-pub fn let_binding() -> Parser(Syntax) {
+fn let_binding() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use res <- do(either(keyword("let"), keyword("def")))
   use <- ws()
@@ -462,7 +462,7 @@ pub fn let_binding() -> Parser(Syntax) {
   }
 }
 
-pub fn refl() -> Parser(Syntax) {
+fn refl() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use _ <- do(keyword("refl"))
   use <- ws()
@@ -472,7 +472,7 @@ pub fn refl() -> Parser(Syntax) {
   return(ReflSyntax(a, pos))
 }
 
-pub fn psi() -> Parser(Syntax) {
+fn psi() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use _ <- do(keyword("Psi"))
   use <- ws()
@@ -484,7 +484,7 @@ pub fn psi() -> Parser(Syntax) {
   return(PsiSyntax(eq, p, pos))
 }
 
-pub fn intersection() -> Parser(Syntax) {
+fn intersection() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use _ <- do(char("["))
   use <- commit()
@@ -495,7 +495,7 @@ pub fn intersection() -> Parser(Syntax) {
   return(IntersectionSyntax(a, b, pos))
 }
 
-pub fn cast() -> Parser(Syntax) {
+fn cast() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use _ <- do(keyword("cast"))
   use <- commit()
@@ -510,7 +510,7 @@ pub fn cast() -> Parser(Syntax) {
   return(CastSyntax(a, inter, eq, pos))
 }
 
-pub fn exfalso() -> Parser(Syntax) {
+fn exfalso() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use _ <- do(keyword("exfalso"))
   use <- commit()
@@ -543,6 +543,7 @@ pub fn expr() -> Parser(Syntax) {
       refl(),
       psi(),
       intersection(),
+      cast(),
       exfalso(),
       ident(),
       relevant_but_ignored(),

@@ -195,7 +195,7 @@ fn rel_occurs(t: Term, x: Index) -> Result(Pos, Nil) {
   }
 }
 
-pub fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
+fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
   case s, ty {
     LambdaSyntax(mode1, x, Ok(xt), body, pos), VPi(_, mode2, a, b, _) -> {
       use _ <- result.try(case mode1 == mode2 {
