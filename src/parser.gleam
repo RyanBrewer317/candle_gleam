@@ -2,11 +2,11 @@ import gleam/int
 import gleam/list
 import gleam/string
 import header.{
-  type BinderMode, type Pos, type Syntax, type SyntaxParam, AppSyntax, DefSyntax,
-  EqSyntax, FstSyntax, IdentSyntax, IntersectionSyntax, IntersectionTypeSyntax,
-  LambdaSyntax, LetSyntax, ManyMode, NatSyntax, NatTypeSyntax, PiSyntax, Pos,
-  PsiSyntax, ReflSyntax, SndSyntax, SortSyntax, SyntaxParam, TypeMode, TypeSort,
-  ZeroMode, CastSyntax
+  type BinderMode, type Pos, type Syntax, type SyntaxParam, AppSyntax,
+  CastSyntax, DefSyntax, EqSyntax, ExFalsoSyntax, FstSyntax, IdentSyntax,
+  IntersectionSyntax, IntersectionTypeSyntax, LambdaSyntax, LetSyntax, ManyMode,
+  NatSyntax, NatTypeSyntax, PiSyntax, Pos, PsiSyntax, ReflSyntax, SndSyntax,
+  SortSyntax, SyntaxParam, TypeMode, TypeSort, ZeroMode,
 }
 
 pub type Parser(a) {
@@ -510,6 +510,17 @@ pub fn cast() -> Parser(Syntax) {
   return(CastSyntax(a, inter, eq, pos))
 }
 
+pub fn exfalso() -> Parser(Syntax) {
+  use pos <- do(get_pos())
+  use _ <- do(keyword("exfalso"))
+  use <- commit()
+  use <- ws()
+  use _ <- do(char("("))
+  use a <- do(lazy(expr))
+  use _ <- do(char(")"))
+  return(ExFalsoSyntax(a, pos))
+}
+
 pub type Suffix {
   AppSuffix(BinderMode, Syntax, pos: Pos)
   PiSuffix(Syntax, pos: Pos)
@@ -532,6 +543,7 @@ pub fn expr() -> Parser(Syntax) {
       refl(),
       psi(),
       intersection(),
+      exfalso(),
       ident(),
       relevant_but_ignored(),
     ]),

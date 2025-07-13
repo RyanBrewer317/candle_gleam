@@ -287,6 +287,7 @@ pub type Value {
   VInter(Value, Value, Pos)
   VInterT(String, Value, fn(Value) -> Value, Pos)
   VCast(Value, Value, Value, Pos)
+  VExFalso(Value, Pos)
 }
 
 pub type Neutral {
@@ -310,6 +311,7 @@ pub fn value_pos(v: Value) -> Pos {
     VInter(_, _, pos) -> pos
     VInterT(_, _, _, pos) -> pos
     VCast(_, _, _, pos) -> pos
+    VExFalso(_, pos) -> pos
   }
 }
 
@@ -379,7 +381,15 @@ pub fn pretty_value(v: Value) -> String {
       <> pretty_value(a)
       <> ")& "
       <> pretty_value(b(VNeutral(VIdent(x, TypeMode, Level(0), pos))))
-    VCast(a, inter, eq, _) -> "cast(" <> pretty_value(a) <> ", " <> pretty_value(inter) <> ", " <> pretty_value(eq) <> ")"
+    VCast(a, inter, eq, _) ->
+      "cast("
+      <> pretty_value(a)
+      <> ", "
+      <> pretty_value(inter)
+      <> ", "
+      <> pretty_value(eq)
+      <> ")"
+    VExFalso(a, _) -> "exfalso(" <> pretty_value(a) <> ")"
   }
 }
 
@@ -405,7 +415,9 @@ pub fn quote(size: Level, v: Value) -> Term {
       let n = VNeutral(VIdent(x, TypeMode, size, pos))
       Binder(InterT(quote(size, a)), x, quote(inc(size), b(n)), pos)
     }
-    VCast(a, inter, eq, pos) -> Ctor3(Cast, quote(size, a), quote(size, inter), quote(size, eq), pos)
+    VCast(a, inter, eq, pos) ->
+      Ctor3(Cast, quote(size, a), quote(size, inter), quote(size, eq), pos)
+    VExFalso(a, pos) -> Ctor1(ExFalso, quote(size, a), pos)
   }
 }
 

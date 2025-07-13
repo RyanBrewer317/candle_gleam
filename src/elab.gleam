@@ -1,14 +1,15 @@
 import gleam/result
 import header.{
   type BinderMode, type Index, type Level, type Neutral, type Pos, type Syntax,
-  type Term, type Value, App, AppSyntax, Binder, Ctor0, Ctor1, Ctor2, Ctor3,
-  DefSyntax, Eq, EqSyntax, Fst, FstSyntax, Ident, IdentSyntax, Index, Inter,
-  InterT, IntersectionSyntax, IntersectionTypeSyntax, KindSort, Lambda,
-  LambdaSyntax, Let, LetSyntax, Level, ManyMode, Nat, NatSyntax, NatT,
-  NatTypeSyntax, Pi, PiSyntax, Psi, PsiSyntax, Refl, ReflSyntax, Snd, SndSyntax,
-  Sort, SortSyntax, TypeMode, TypeSort, VApp, VEq, VFst, VIdent, VInter, VInterT,
-  VLambda, VNat, VNatType, VNeutral, VPi, VPsi, VRefl, VSnd, VSort, ZeroMode,
-  inc, pretty_mode, pretty_pos, pretty_term, pretty_value, Cast, CastSyntax, VCast
+  type Term, type Value, App, AppSyntax, Binder, Cast, CastSyntax, Ctor0, Ctor1,
+  Ctor2, Ctor3, DefSyntax, Eq, EqSyntax, ExFalso, ExFalsoSyntax, Fst, FstSyntax,
+  Ident, IdentSyntax, Index, Inter, InterT, IntersectionSyntax,
+  IntersectionTypeSyntax, KindSort, Lambda, LambdaSyntax, Let, LetSyntax, Level,
+  ManyMode, Nat, NatSyntax, NatT, NatTypeSyntax, Pi, PiSyntax, Psi, PsiSyntax,
+  Refl, ReflSyntax, Snd, SndSyntax, Sort, SortSyntax, TypeMode, TypeSort, VApp,
+  VCast, VEq, VExFalso, VFst, VIdent, VInter, VInterT, VLambda, VNat, VNatType,
+  VNeutral, VPi, VPsi, VRefl, VSnd, VSort, ZeroMode, inc, pretty_mode,
+  pretty_pos, pretty_term, pretty_value,
 }
 
 fn erase(t: Value) -> Value {
@@ -24,6 +25,7 @@ fn erase(t: Value) -> Value {
     VInter(a, _, _) -> erase(a)
     VInterT(x, a, b, p) -> VInterT(x, erase(a), fn(arg) { erase(b(arg)) }, p)
     VCast(a, _, _, _) -> erase(a)
+    VExFalso(a, _) -> erase(a)
     VNat(_, _) | VNatType(_) | VSort(_, _) -> t
   }
 }
@@ -106,8 +108,9 @@ pub fn eval(t: Term, env: List(Value)) -> Value {
       VInterT(x, eval(a, env), fn(arg) { eval(b, [arg, ..env]) }, pos)
     Ctor1(Fst, a, pos) -> fst(pos, eval(a, env))
     Ctor1(Snd, a, pos) -> snd(pos, eval(a, env))
-    Ctor3(Cast, a, inter, eq, pos) -> VCast(eval(a, env), eval(inter, env), eval(eq, env), pos)
-    _ -> todo
+    Ctor3(Cast, a, inter, eq, pos) ->
+      VCast(eval(a, env), eval(inter, env), eval(eq, env), pos)
+    Ctor1(ExFalso, a, pos) -> VExFalso(eval(a, env), pos)
   }
 }
 
@@ -161,7 +164,9 @@ fn eq_helper(lvl: Level, a: Value, b: Value) -> Bool {
       eqh(VNeutral(a1), VNeutral(a2))
     VNeutral(VSnd(a1, _)), VNeutral(VSnd(a2, _)) ->
       eqh(VNeutral(a1), VNeutral(a2))
-    VCast(a1, inter1, eq1, _), VCast(a2, inter2, eq2, _) -> eqh(a1, a2) && eqh(inter1, inter2) && eqh(eq1, eq2)
+    VCast(a1, inter1, eq1, _), VCast(a2, inter2, eq2, _) ->
+      eqh(a1, a2) && eqh(inter1, inter2) && eqh(eq1, eq2)
+    VExFalso(a1, _), VExFalso(a2, _) -> eqh(a1, a2)
     _, _ -> False
   }
 }
@@ -586,8 +591,12 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       use #(b2, bt) <- result.try(infer(ctx, b))
       let b3 = eval(b2, ctx.env)
       case eq(ctx.level, a3, b3) {
-        True -> Ok(#(Ctor2(Inter, a2, b2, pos), VInterT("_", at, fn(_) { bt }, pos)))
-        False -> Error("Intersection components must be equal (" <> pretty_pos(pos) <> ")")
+        True ->
+          Ok(#(Ctor2(Inter, a2, b2, pos), VInterT("_", at, fn(_) { bt }, pos)))
+        False ->
+          Error(
+            "Intersection components must be equal (" <> pretty_pos(pos) <> ")",
+          )
       }
     }
     FstSyntax(a, pos) -> {
@@ -614,12 +623,81 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
           let inter3 = eval(inter2, ctx.env)
           use a2 <- result.try(check(ctx, a, at))
           let a3 = eval(a2, ctx.env)
-          use eq2 <- result.try(check(ctx, eq, VEq(a3, fst(pos, inter3), at, pos)))
+          use eq2 <- result.try(check(
+            ctx,
+            eq,
+            VEq(a3, fst(pos, inter3), at, pos),
+          ))
           Ok(#(Ctor3(Cast, a2, inter2, eq2, pos), intert))
         }
-        _ -> Error("cast requires an intersection in the second argument (" <> pretty_pos(pos) <> ")")
+        _ ->
+          Error(
+            "cast requires an intersection in the second argument ("
+            <> pretty_pos(pos)
+            <> ")",
+          )
       }
     }
-    _ -> todo as { header.pretty_syntax(s) }
+    ExFalsoSyntax(a, pos) -> {
+      use a2 <- result.try(check(
+        ctx,
+        a,
+        VEq(ctrue(pos), cfalse(pos), cbool(pos), pos),
+      ))
+      Ok(#(
+        Ctor1(ExFalso, a2, pos),
+        VPi("t", ZeroMode, VSort(TypeSort, pos), fn(t) { t }, pos),
+      ))
+    }
   }
+}
+
+fn cbool(pos: Pos) -> Value {
+  VPi(
+    "t",
+    ZeroMode,
+    VSort(TypeSort, pos),
+    fn(t) {
+      VPi(
+        "x",
+        ManyMode,
+        t,
+        fn(_x) { VPi("y", ManyMode, t, fn(_y) { t }, pos) },
+        pos,
+      )
+    },
+    pos,
+  )
+}
+
+fn ctrue(pos: Pos) -> Value {
+  VLambda(
+    "t",
+    ZeroMode,
+    fn(_t) {
+      VLambda(
+        "x",
+        ManyMode,
+        fn(x) { VLambda("y", ManyMode, fn(_y) { x }, pos) },
+        pos,
+      )
+    },
+    pos,
+  )
+}
+
+fn cfalse(pos: Pos) -> Value {
+  VLambda(
+    "t",
+    ZeroMode,
+    fn(_t) {
+      VLambda(
+        "x",
+        ManyMode,
+        fn(_x) { VLambda("y", ManyMode, fn(y) { y }, pos) },
+        pos,
+      )
+    },
+    pos,
+  )
 }
