@@ -373,8 +373,14 @@ pub fn pretty_value(v: Value) -> String {
       }
       <> "-> "
       <> pretty_value(f(VNeutral(VIdent(x, mode, Level(0), pos))))
-    VEq(a, b, _t, _) ->
-      "(" <> pretty_value(a) <> ") = (" <> pretty_value(b) <> ")"
+    VEq(a, b, t, _) ->
+      "("
+      <> pretty_value(a)
+      <> ") =["
+      <> pretty_value(t)
+      <> "] ("
+      <> pretty_value(b)
+      <> ")"
     VRefl(a, _) -> "refl(" <> pretty_value(a) <> ")"
     VInter(a, b, _) -> "[" <> pretty_value(a) <> ", " <> pretty_value(b) <> "]"
     VInterT(x, a, b, pos) ->

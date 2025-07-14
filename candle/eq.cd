@@ -19,30 +19,31 @@ let theta_phi{A: Type}{B: <A>=>Type}{a: (x: A) & B<x>}
   : cast(a.1, a, refl(a.1)) = a
   := refl(a) in
 
+let hetero_uip0{A: Type}{B: Type}{x: A}{y: B}
+  : (x = x) & (y = y)
+  := [refl(x), refl(y)] in
+
+let hetero_uip{A: Type}{B: Type}{x1: A}{y1: A}{x2: B}{y2: B}(e1: x1 = y1)(e2: x2 = y2)
+  : (x1 = y1) & (x2 = y2) := 
+  let lemma1: (x1 = x1) & (x2 = x2) := hetero_uip0{A}{B}{x1}{x2} in
+  let lemma2: (x1 = y1) & (x2 = x2) := leibniz{A}{<z>-> (x1 = z) & (x2 = x2)}{x1}{y1}(lemma1)(e1) in
+  leibniz{B}{<z>-> (x1 = y1) & (x2 = z)}{x2}{y2}(lemma2)(e2) in
+
 let theta1
   {A: Type}
   {B: <A>=>Type}
   (x: (a: A) & B<a>)
   (y: (a: A) & B<a>)
-  (eq: y.1 = x.1)
+  (eq: x.1 = y.1)
   : x = y
   := leibniz
-    {(a: A) & B<a>}
-    {<z>-> z = y}
-    {x}
-    {y}
-    (leibniz
-      {A}
-      {<z>-> 
-        {eq: z = x.1}=> cast(z, x, eq) = y
-      }
-      {y.1}
-      {x.1}
-      ({i}-> refl(y))
-      (eq)
-      {refl(x.1)}
-    )
-    (theta_phi{A}{B}{x}) 
+    {A}
+    {<z>-> (e: z = y.1) & cast(x.1, x, refl(x.1)) = cast(z, y, e)}
+    {x.1}
+    {y.1}
+    (hetero_uip{A}{(a: A) & B<a>}{x.1}{y.1}{x}{x}(eq)(theta_phi{A}{B}{cast(x.1, y, eq)}))
+    (eq)
+    .2
 in
 
 2

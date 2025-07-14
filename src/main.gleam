@@ -6,7 +6,7 @@ import parser
 import simplifile
 
 fn go() {
-  let assert Ok(code) = simplifile.read("./candle/main.cd")
+  let assert Ok(code) = simplifile.read("./candle/eq.cd")
   io.println(code)
   io.println("--")
   use s <- result.try(parser.parse(code, parser.expr()))

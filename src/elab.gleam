@@ -53,8 +53,8 @@ fn app(mode: BinderMode, foo: Value, bar: Value) -> Value {
 fn psi(pos: Pos, eq: Value, pred: Value) -> Value {
   case eq {
     VNeutral(neutral) -> VNeutral(VPsi(neutral, pred, pos))
-    VEq(_, _, _, _) -> VLambda("x", ManyMode, fn(x) { x }, pos)
-    _ -> panic as "impossible equality elimination"
+    VRefl(_, _) -> VLambda("x", ManyMode, fn(x) { x }, pos)
+    _ -> panic as { "impossible equality elimination " <> pretty_value(eq) }
   }
 }
 
@@ -132,6 +132,14 @@ pub type Context {
 }
 
 pub const empty_ctx = Context(Level(0), [], [], [])
+
+fn pretty_hypotheses(scope: List(#(String, #(BinderMode, Value)))) -> String {
+  case scope {
+    [] -> "\n"
+    [#(x, #(_, t)), ..rest] ->
+      x <> ": " <> pretty_value(t) <> "\n" <> pretty_hypotheses(rest)
+  }
+}
 
 fn eq(lvl: Level, a: Value, b: Value) -> Bool {
   eq_helper(lvl, erase(a), erase(b))
@@ -278,10 +286,12 @@ fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
       use v2 <- result.try(check(ctx, v, xt2v))
       let v3 = eval(v2, ctx.env)
       let ctx2 =
-        Context(..ctx, env: [v3, ..ctx.env], scope: [
-          #(x, #(ManyMode, xt2v)),
-          ..ctx.scope
-        ])
+        Context(
+          level: inc(ctx.level),
+          types: [xt2v, ..ctx.types],
+          env: [v3, ..ctx.env],
+          scope: [#(x, #(ManyMode, xt2v)), ..ctx.scope],
+        )
       use e2 <- result.try(check(ctx2, e, ty))
       Ok(Binder(Let(mode: ManyMode, val: v2), x, e2, pos))
     }
@@ -342,7 +352,8 @@ fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
         True -> Ok(v)
         False -> {
           Error(
-            "type mismatch between `"
+            pretty_hypotheses(ctx.scope)
+            <> "type mismatch between `"
             <> pretty_value(ty)
             <> "` and `"
             <> pretty_value(ty2)
