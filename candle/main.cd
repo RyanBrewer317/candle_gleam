@@ -1,0 +1,18 @@
+def Cast<A: Type><B: Type>: Type 
+  := (f: A => (A & B)) & ({a: A}=> a = f(a).1) in
+
+let cast_irrel{A: Type}{B: Type}{k: Cast<A><B>}: Cast<A><B>
+  := [a-> cast(a, k.1(a), k.2{a}), {a}-> refl(a)] in
+
+def False: Type := {T: Type}=> T in
+
+def Top: Type := {False}=> False in
+
+let top_inj{A: Type}(a: A): A & Top
+  := [a, {f: False}-> cast(a, f{A & False}, f{a = f{A & False}.1}).2] in
+
+def Sigma<A: Type><B: <A>=>Type>: Type
+  := {T: Type} => ((a: A) => B<a> => T) => T in
+
+let one_two: Sigma<Nat><<_>-> Nat> := {_}-> decons-> decons(1)(2) in
+one_two{Nat}(a-> b-> b)

@@ -1,0 +1,23 @@
+def cSigma<A: Type><B: <A>=>Type>: Type
+  := {T: Type} => ((a: A) => B<a> => T) => T in
+
+let csigma{A: Type}{B: <A>=>Type}(a: A)(b: B<a>): cSigma<A><B>
+  := {T}-> ctor-> ctor(a)(b) in
+
+def PreSigmaInd<A: Type><B: <A>=>Type><s: cSigma<A><B>>: Type :=
+  {P: <(cSigma<A><B>)> => Type} =>
+  ((a: A)=> (b: B<a>)=> P<csigma{A}{B}(a)(b)>) =>
+  P<s>
+in
+
+def PreSigma<A: Type><B: <A>=>Type>: Type
+  := (s: cSigma<A><B>) & PreSigmaInd<A><B><s> in
+
+let pre_sigma{A: Type}{B: <A>=>Type}(a: A)(b: B<a>): PreSigma<A><B> 
+  := [csigma{A}{B}(a)(b), {P}-> (ctor)-> ctor(a)(b)] in
+
+let pre_sigma_to{A: Type}{B: <A>=>Type}(s: cSigma<A><B>): PreSigma<A><B>
+  := s{PreSigma<A><B>}(pre_sigma{A}{B}) in
+
+
+2

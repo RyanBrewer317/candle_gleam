@@ -354,11 +354,14 @@ pub fn pretty_value(v: Value) -> String {
       <> ")=> "
       <> pretty_value(b(VNeutral(VIdent("_", mode, Level(0), pos))))
     VPi(x, mode, a, b, pos) ->
-      "("
-      <> x
-      <> ": "
-      <> pretty_value(a)
-      <> ")=> "
+      {
+        case mode {
+          ManyMode -> "(" <> x <> ": " <> pretty_value(a) <> ")"
+          ZeroMode -> "{" <> x <> ": " <> pretty_value(a) <> "}"
+          TypeMode -> "<" <> x <> ": " <> pretty_value(a) <> ">"
+        }
+      }
+      <> "=> "
       <> pretty_value(b(VNeutral(VIdent(x, mode, Level(0), pos))))
     VLambda(x, mode, f, pos) ->
       {

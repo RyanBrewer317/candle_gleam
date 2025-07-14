@@ -62,7 +62,11 @@ fn fst(pos: Pos, inter: Value) -> Value {
   case inter {
     VNeutral(neutral) -> VNeutral(VFst(neutral, pos))
     VInter(a, _, _) -> a
-    _ -> panic as "impossible value projection"
+    VCast(a, _, _, _) -> {
+      // slightly creative but seems right
+      a
+    }
+    _ -> panic as { "impossible value projection " <> pretty_value(inter) }
   }
 }
 
@@ -70,6 +74,10 @@ fn snd(pos: Pos, inter: Value) -> Value {
   case inter {
     VNeutral(neutral) -> VNeutral(VSnd(neutral, pos))
     VInter(_, b, _) -> b
+    VCast(a, _, _, _) -> {
+      // slightly creative but seems right
+      a
+    }
     _ -> panic as "impossible value projection"
   }
 }
@@ -188,6 +196,7 @@ fn rel_occurs(t: Term, x: Index) -> Result(Pos, Nil) {
     Ctor2(App(ZeroMode), a, _, _) -> rel_occurs(a, x)
     Ctor2(Psi, _, _, _) -> Error(Nil)
     Ctor2(_, a, b, _) -> result.or(rel_occurs(a, x), rel_occurs(b, x))
+    Ctor3(Cast, a, _, _, _) -> rel_occurs(a, x)
     Ctor3(_, a, b, c, _) ->
       rel_occurs(a, x)
       |> result.or(rel_occurs(b, x))
@@ -530,24 +539,21 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       Ok(#(Ctor1(Refl, a2, pos), VEq(a3, a3, t, pos)))
     }
     PsiSyntax(e, p, pos) -> {
-      use #(e2, _et) <- result.try(infer(ctx, e))
-      case e2 {
-        Ctor3(Eq, a, b, t, _) -> {
-          let a2 = eval(a, ctx.env)
-          let b2 = eval(b, ctx.env)
-          let t2 = eval(t, ctx.env)
+      use #(e2, et) <- result.try(infer(ctx, e))
+      case et {
+        VEq(a, b, t, _) -> {
           use p2 <- result.try(check(
             ctx,
             p,
             VPi(
               "y",
               TypeMode,
-              t2,
+              t,
               fn(y) {
                 VPi(
                   "p",
                   TypeMode,
-                  VEq(a2, y, t2, pos),
+                  VEq(a, y, t, pos),
                   fn(_) { VSort(TypeSort, pos) },
                   pos,
                 )
@@ -562,13 +568,20 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
             VPi(
               "_",
               ManyMode,
-              app(TypeMode, app(TypeMode, p3, a2), VRefl(a2, pos)),
-              fn(_) { app(TypeMode, app(TypeMode, p3, b2), e3) },
+              app(TypeMode, app(TypeMode, p3, a), VRefl(a, pos)),
+              fn(_) { app(TypeMode, app(TypeMode, p3, b), e3) },
               pos,
             ),
           ))
         }
-        _ -> Error("J requires an equality type")
+        _ ->
+          Error(
+            "Psi requires an equality type, but received "
+            <> pretty_term(e2)
+            <> " ("
+            <> pretty_pos(pos)
+            <> ")",
+          )
       }
     }
     IntersectionTypeSyntax(x, a, b, pos) -> {

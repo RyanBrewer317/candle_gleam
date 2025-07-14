@@ -44,7 +44,7 @@ fn satisfy(pred: fn(String) -> Bool) -> Parser(String) {
         case pred(c) {
           True ->
             case c {
-              "\n" -> Ok(#(Pos(pos.src, pos.line + 1, 0), rest, c))
+              "\n" -> Ok(#(Pos(pos.src, pos.line + 1, 1), rest, c))
               _ -> Ok(#(Pos(pos.src, pos.line, pos.col + 1), rest, c))
             }
           False ->
@@ -209,9 +209,8 @@ fn ws(k: fn() -> Parser(a)) -> Parser(a) {
 }
 
 fn ident_string() -> Parser(String) {
-  use first <- do(lowercase())
-  use rest <- do(many0(either(char("_"), alphanum())))
-  return(first <> string.concat(rest))
+  many(either(char("_"), alphanum()))
+  |> map(string.concat)
 }
 
 fn pattern_string() -> Parser(String) {
@@ -224,6 +223,15 @@ fn pattern_string() -> Parser(String) {
     }
   })
   |> label("identifier")
+}
+
+fn ignored_pattern_string() -> Parser(String) {
+  use _ <- do(char("_"))
+  use res <- do(maybe(ident_string()))
+  case res {
+    Ok(s) -> return("_" <> s)
+    Error(_) -> return("_")
+  }
 }
 
 fn ident() -> Parser(Syntax) {
@@ -282,7 +290,7 @@ fn zero_or_type_binder() -> Parser(Syntax) {
   use <- ws()
   use x_pos <- do(get_pos())
   use mb_x <- do(
-    maybe(either(map(pattern_string(), Ok), map(ident_string(), Error))),
+    maybe(either(map(ignored_pattern_string(), Ok), map(ident_string(), Error))),
   )
   case mb_x {
     Ok(id) -> {
@@ -384,7 +392,20 @@ fn parens() -> Parser(Syntax) {
           _ -> ")"
         }),
       )
-      return(e)
+      case e {
+        IdentSyntax(x, _) -> {
+          use <- ws()
+          use res <- do(maybe(string("->")))
+          case res {
+            Error(Nil) -> return(e)
+            Ok(_) -> {
+              use body <- do(lazy(expr))
+              return(LambdaSyntax(ManyMode, x, Error(Nil), body, pos))
+            }
+          }
+        }
+        _ -> return(e)
+      }
     }
   }
 }
