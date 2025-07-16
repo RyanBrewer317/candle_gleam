@@ -1,4 +1,4 @@
-let subst{A: Type}{a: A}{b: A}(eq: a = b){P: (y: A)=>((a = y))=>Type}
+let subst{A: Type}{a: A}{b: A}(eq: a = b){P: (y: A)=>(a = y)=>Type}
   : P(a)(refl(a)) => P(b)(eq)
   := Psi(eq, P) in
 
@@ -53,7 +53,7 @@ let csigma{A: Type}{B: A=>Type}(a: A)(b: B(a)): cSigma(A)(B)
   := {T}-> ctor-> ctor(a)(b) in
 
 def PreSigmaInd(A: Type)(B: A=>Type)(s: cSigma(A)(B)): Type :=
-  {P: ((cSigma(A)(B))) => Type} =>
+  {P: cSigma(A)(B) => Type} =>
   ((a: A)=> (b: B(a))=> P(csigma{A}{B}(a)(b))) =>
   P(s)
 in
@@ -80,7 +80,7 @@ let pre_sigma_ind
   {A: Type}
   {B: A=>Type}
   (s: PreSigma(A)(B))
-  {P: ((PreSigma(A)(B)))=>Type}
+  {P: PreSigma(A)(B)=>Type}
   (ctor: (a: A)=> (b: B(a))=> P(pre_sigma{A}{B}(a)(b)))
   : P(s)
   :=
@@ -88,7 +88,7 @@ let pre_sigma_ind
   leibniz{PreSigma(A)(B)}{P}{pre_sigma_to{A}{B}(s.1)}{s}(lemma)(pre_sigma_fixed{A}{B}(s)) in
 
 def SigmaInd(A: Type)(B: A=>Type)(s: PreSigma(A)(B)): Type
-  := {P: ((PreSigma(A)(B)))=>Type}=> ((a: A)=> (b: B(a))=> P(pre_sigma{A}{B}(a)(b)))=> P(s) in
+  := {P: PreSigma(A)(B)=>Type}=> ((a: A)=> (b: B(a))=> P(pre_sigma{A}{B}(a)(b)))=> P(s) in
 
 def Sigma(A: Type)(B: A=>Type): Type := (s: PreSigma(A)(B)) & SigmaInd(A)(B)(s) in
 
@@ -109,7 +109,7 @@ let sigma_ind
   {A: Type}
   {B: A=>Type}
   (s: Sigma(A)(B))
-  {P: ((Sigma(A)(B)))=>Type}
+  {P: Sigma(A)(B)=>Type}
   (ctor: (a: A)=> (b: B(a))=> P(sigma{A}{B}(a)(b)))
   : P(s)
   := s.2{s-> P(pre_sigma_cast{A}{B}(s))}(ctor) in

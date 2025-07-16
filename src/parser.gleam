@@ -130,6 +130,13 @@ fn commit(k: fn() -> Parser(a)) -> Parser(a) {
   })
 }
 
+fn maybe_commit(cond: Bool, k: fn() -> Parser(a)) -> Parser(a) {
+  case cond {
+    True -> commit(k)
+    False -> k()
+  }
+}
+
 fn char(c: String) -> Parser(String) {
   satisfy(fn(c2) { c == c2 }) |> label(c)
 }
@@ -278,66 +285,53 @@ fn relevant_but_ignored() -> Parser(Syntax) {
   return(LambdaSyntax(ManyMode, x, Error(Nil), e, pos))
 }
 
-fn zero_or_type_binder() -> Parser(Syntax) {
+fn annotated_binder() -> Parser(Syntax) {
+  use pos <- do(get_pos())
+  use param <- do(parse_param(should_commit: False))
+  use <- commit()
+  use <- ws()
+  let arrows = case param.mode {
+    ManyMode -> [string("->"), string("=>"), string("&")]
+    ZeroMode -> [string("->"), string("=>")]
+    _ -> panic as "impossible binder mode"
+  }
+  use res <- do(any_of(arrows) |> label("binding arrow"))
+  use e <- do(lazy(expr))
+  case res {
+    "->" -> return(LambdaSyntax(param.mode, param.name, Ok(param.ty), e, pos))
+    "=>" -> return(PiSyntax(param.mode, param.name, param.ty, e, pos))
+    "&" -> return(IntersectionTypeSyntax(param.name, param.ty, e, pos))
+    _ -> panic as "impossible annotated binder"
+  }
+}
+
+fn erased_binder() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use _ <- do(char("{"))
   use <- commit()
-  use <- ws()
-  use x_pos <- do(get_pos())
-  use mb_x <- do(
-    maybe(either(map(ignored_pattern_string(), Ok), map(ident_string(), Error))),
+  use e <- do(lazy(expr) |> label("expression or binding"))
+  use _ <- do(
+    char("}")
+    |> label(case e {
+      IdentSyntax(_, _) -> ": or }"
+      _ -> "}"
+    }),
   )
-  case mb_x {
-    Ok(id) -> {
-      use <- ws()
-      use res <- do(maybe(char(":")))
+  use <- ws()
+  case e {
+    IdentSyntax(x, _) -> {
+      use res <- do(either(string("->"), string("=>")))
+      use body <- do(lazy(expr))
       case res {
-        Ok(_) -> {
-          let x = case id {
-            Ok(x) -> x
-            Error(x) -> x
-          }
-          use t <- do(lazy(expr))
-          use _ <- do(char("}"))
-          use <- ws()
-          use res <- do(either(string("->"), string("=>")))
-          use u <- do(lazy(expr))
-          case res {
-            "->" -> return(LambdaSyntax(ZeroMode, x, Ok(t), u, pos))
-            "=>" -> return(PiSyntax(ZeroMode, x, t, u, pos))
-            _ -> panic as "impossible zero or type binder"
-          }
-        }
-        Error(_) -> {
-          use _ <- do(char("}"))
-          use <- ws()
-          case id {
-            Ok(x) -> {
-              use _ <- do(string("->"))
-              use e <- do(lazy(expr))
-              return(LambdaSyntax(ZeroMode, x, Error(Nil), e, pos))
-            }
-            Error(x) -> {
-              use arrow <- do(either(string("->"), string("=>")))
-              use e <- do(lazy(expr))
-              case arrow {
-                "->" -> return(LambdaSyntax(ZeroMode, x, Error(Nil), e, pos))
-                "=>" ->
-                  return(PiSyntax(ZeroMode, "_", IdentSyntax(x, x_pos), e, pos))
-                _ -> panic as "impossible zero or type binder"
-              }
-            }
-          }
-        }
+        "->" -> return(LambdaSyntax(ZeroMode, x, Error(Nil), body, pos))
+        "=>" -> return(PiSyntax(ZeroMode, "_", e, body, pos))
+        _ -> panic as "impossible erased binder"
       }
     }
-    Error(Nil) -> {
-      use t <- do(lazy(expr))
-      use _ <- do(char("}"))
-      use <- ws()
+    _ -> {
       use _ <- do(string("=>"))
-      use u <- do(lazy(expr))
-      return(PiSyntax(ZeroMode, "_", t, u, pos))
+      use body <- do(lazy(expr))
+      return(PiSyntax(ZeroMode, "_", e, body, pos))
     }
   }
 }
@@ -346,70 +340,35 @@ fn parens() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use _ <- do(char("("))
   use <- commit()
-  use <- ws()
-  use res <- do(
-    maybe({
-      use x <- do(pattern_string())
-      use <- ws()
-      use _ <- do(char(":"))
-      return(x)
+  use e <- do(lazy(expr) |> label("expression or binding"))
+  use _ <- do(
+    char(")")
+    |> label(case e {
+      IdentSyntax(_, _) -> ": or )"
+      _ -> ")"
     }),
   )
-  case res {
-    Ok(x) -> {
-      use t <- do(lazy(expr))
-      use _ <- do(char(")"))
+  case e {
+    IdentSyntax(x, _) -> {
       use <- ws()
-      use res <- do(label(
-        any_of([string("->"), string("=>"), string("&")]),
-        "binder",
-      ))
-      use body <- do(lazy(expr))
+      use res <- do(maybe(string("->")))
       case res {
-        "->" -> {
-          return(LambdaSyntax(ManyMode, x, Ok(t), body, pos))
+        Error(Nil) -> return(e)
+        Ok(_) -> {
+          use body <- do(lazy(expr))
+          return(LambdaSyntax(ManyMode, x, Error(Nil), body, pos))
         }
-        "=>" -> {
-          return(PiSyntax(ManyMode, x, t, body, pos))
-        }
-        "&" -> {
-          return(IntersectionTypeSyntax(x, t, body, pos))
-        }
-        _ -> panic as "impossible binder"
       }
     }
-    Error(_) -> {
-      use e <- do(lazy(expr) |> label("expression or binding"))
-      use _ <- do(
-        char(")")
-        |> label(case e {
-          IdentSyntax(_, _) -> ": or )"
-          _ -> ")"
-        }),
-      )
-      case e {
-        IdentSyntax(x, _) -> {
-          use <- ws()
-          use res <- do(maybe(string("->")))
-          case res {
-            Error(Nil) -> return(e)
-            Ok(_) -> {
-              use body <- do(lazy(expr))
-              return(LambdaSyntax(ManyMode, x, Error(Nil), body, pos))
-            }
-          }
-        }
-        _ -> return(e)
-      }
-    }
+    _ -> return(e)
   }
 }
 
-fn parse_param() -> Parser(SyntaxParam) {
+fn parse_param(should_commit idk: Bool) -> Parser(SyntaxParam) {
   use <- ws()
-  use res <- do(any_of([char("("), char("{"), char("<")]))
+  use res <- do(any_of([char("("), char("{")]))
   use <- ws()
-  use <- commit()
+  use <- maybe_commit(idk)
   use x <- do(pattern_string())
   use <- ws()
   use _ <- do(char(":"))
@@ -457,7 +416,7 @@ fn let_binding() -> Parser(Syntax) {
   use <- commit()
   use x <- do(pattern_string())
   use <- ws()
-  use params <- do(many0(parse_param()))
+  use params <- do(many0(parse_param(should_commit: True)))
   use <- ws()
   use _ <- do(char(":") |> label(": or parameter"))
   use t <- do(lazy(expr))
@@ -549,8 +508,9 @@ pub fn expr() -> Parser(Syntax) {
       nat_type(),
       type_type(),
       nat(),
+      annotated_binder(),
       parens(),
-      zero_or_type_binder(),
+      erased_binder(),
       let_binding(),
       refl(),
       psi(),
