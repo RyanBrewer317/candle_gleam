@@ -163,13 +163,54 @@ let psucc(n: pNat): pNat := [csucc(n.1), {P}-> z-> s-> s{n.1}(n.2{P}(z)(s))] in
 
 let cnat_to_pnat(n: cNat): pNat := n{pNat}(pzero)(psucc) in
 
-let succ_inj{n: cNat}{m: cNat}(eq: n = m): csucc(n) = csucc(m)
+let csucc_inj{n: cNat}{m: cNat}(eq: n = m): csucc(n) = csucc(m)
   := leibniz{cNat}{x-> csucc(n) = csucc(x)}{n}{m}(refl(csucc(n)))(eq) in
 
-let cnat_preserved1(n: pNat): n.1 = cnat_to_pnat(n.1).1
+let cnat_preserved1(n: pNat): cnat_to_pnat(n.1).1 = n.1
   := // proof by induction via n.2
-  n.2{m -> m = cnat_to_pnat(m).1}(refl(czero))({x}-> ind_hyp-> succ_inj{x}{cnat_to_pnat(x).1}(ind_hyp)) in
+  n.2{m -> cnat_to_pnat(m).1 = m}(refl(czero))({x}-> ind_hyp-> csucc_inj{cnat_to_pnat(x).1}{x}(ind_hyp)) in
 
+let cnat_preserved(n: pNat): cnat_to_pnat(n.1) = n
+  := theta1{cNat}{PreNatInd}(cnat_to_pnat(n.1))(n)(cnat_preserved1(n)) in
 
+let pnat_ind(n: pNat){P: pNat=>Set}(z: P(pzero))(s: {m: cNat}=>P(cnat_to_pnat(m))=>P(cnat_to_pnat(csucc(m))))
+  : P(n) := 
+  let lemma: P(cnat_to_pnat(n.1)) := n.2{m-> P(cnat_to_pnat(m))}(z)(s) in
+  leibniz{pNat}{P}{cnat_to_pnat(n.1)}{n}(lemma)(cnat_preserved(n)) in
+
+def MyNatInd(n: pNat): Set
+  := {P: pNat=>Set}=> P(pzero)=> ({m: pNat}=> P(m) => P(psucc(m))) => P(n) in
+
+def myNat: Set := (n: pNat) & MyNatInd(n) in
+
+let myzero: myNat := [pzero, {P}-> z-> s-> z] in
+
+let mysucc(n: myNat): myNat := [psucc(n.1), {P}-> z-> s-> s{n.1}(n.2{P}(z)(s))] in
+
+let pnat_to_mynat(n: pNat): myNat := n.1{myNat}(myzero)(mysucc) in
+
+let psucc_inj{n: pNat}{m: pNat}(eq: n = m): psucc(n) = psucc(m)
+  := leibniz{pNat}{x-> psucc(n) = psucc(x)}{n}{m}(refl(psucc(n)))(eq) in
+
+let pnat_preserved(n: pNat): n = pnat_to_mynat(n).1
+  := pnat_ind(n)
+    {m-> m = pnat_to_mynat(m).1}
+    (refl(pzero))
+    ({m}-> ind_hyp-> 
+      let m2: pNat := cnat_to_pnat(m) in
+      psucc_inj{m2}{pnat_to_mynat(m2).1}(ind_hyp)
+    ) in
+
+let pnat_cast(n: pNat): myNat
+  := cast(n, pnat_to_mynat(n), pnat_preserved(n)) in
+
+let induction(n: myNat){P: myNat=>Set}
+  : P(myzero) => ({m: myNat}=> P(m) => P(mysucc(m))) => P(n)
+  := z-> s-> n.2{m-> P(pnat_cast(m))}(z)
+    ({m}-> (ind_hyp: P(pnat_cast(m)))->
+      s{pnat_cast(m)}(ind_hyp) // P(mysucc(pnat_cast(m)))
+      // P(mysucc(pnat_cast(m))) is defeq P(pnat_cast(psucc(m)))
+      // both erase to P(csucc(m))
+    ) in
 
 2
