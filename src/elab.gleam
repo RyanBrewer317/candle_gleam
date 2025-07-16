@@ -223,7 +223,9 @@ fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
             "mode mismatch: "
             <> pretty_mode(mode1)
             <> " and "
-            <> pretty_mode(mode2),
+            <> pretty_mode(mode2)
+            <> " at "
+            <> pretty_pos(pos),
           )
       })
       use #(xt2, _xtt) <- result.try(infer(ctx, xt))
@@ -264,7 +266,9 @@ fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
             "mode mismatch: "
             <> pretty_mode(mode1)
             <> " and "
-            <> pretty_mode(mode2),
+            <> pretty_mode(mode2)
+            <> " at "
+            <> pretty_pos(pos),
           )
       })
       let dummy = VNeutral(VIdent(x, mode, ctx.level, pos))

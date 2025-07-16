@@ -211,7 +211,20 @@ fn keyword(s: String) {
 }
 
 fn ws(k: fn() -> Parser(a)) -> Parser(a) {
-  use _ <- do(many0(any_of([char(" "), char("\n"), char("\t")])))
+  use _ <- do(
+    many0(
+      any_of([
+        char(" "),
+        char("\n"),
+        char("\t"),
+        {
+          use _ <- do(string("//"))
+          use _ <- do(many0(satisfy(fn(c) { c != "\n" })))
+          char("\n")
+        },
+      ]),
+    ),
+  )
   k()
 }
 

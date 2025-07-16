@@ -348,11 +348,16 @@ pub fn pretty_value(v: Value) -> String {
     VSort(KindSort, _) -> "Kind"
     VNat(n, _) -> int.to_string(n)
     VNatType(_) -> "Nat"
-    VPi("_", mode, a, b, pos) ->
-      "("
-      <> pretty_value(a)
-      <> ")=> "
+    VPi("_", mode, a, b, pos) -> {
+      let li = pretty_value(a)
+      case mode {
+        ManyMode -> "(" <> li <> ")"
+        ZeroMode -> "{" <> li <> "}"
+        TypeMode -> "<" <> li <> ">"
+      }
+      <> "=> "
       <> pretty_value(b(VNeutral(VIdent("_", mode, Level(0), pos))))
+    }
     VPi(x, mode, a, b, pos) ->
       {
         case mode {

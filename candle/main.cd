@@ -150,4 +150,26 @@ let intro_view{A: Set}(x: Top){a: A}{eq: x = top_inj{A}(a).1}: View(A)(x)
 let elim_view{A: Set}(b: Top){v: View(A)(b)}: A
   := cast(b, dfst{Top & A}{z-> b = z.1}(v), dsnd{Top & A}{z-> b = z.1}(v)).2 in
 
+def cNat: Set := {t: Set}=> t => (t=>t) => t in
+let czero: cNat := {t}-> z-> s-> z in
+let csucc(n: cNat): cNat := {t}-> z-> s-> s(n{t}(z)(s)) in
+
+def PreNatInd(n: cNat): Set 
+  := {P: cNat=>Set}=> P(czero) => ({m: cNat}=> P(m) => P(csucc(m))) => P(n) in
+
+def pNat: Set := (n: cNat) & PreNatInd(n) in
+let pzero: pNat := [czero, {P}-> z-> s-> z] in
+let psucc(n: pNat): pNat := [csucc(n.1), {P}-> z-> s-> s{n.1}(n.2{P}(z)(s))] in
+
+let cnat_to_pnat(n: cNat): pNat := n{pNat}(pzero)(psucc) in
+
+let succ_inj{n: cNat}{m: cNat}(eq: n = m): csucc(n) = csucc(m)
+  := leibniz{cNat}{x-> csucc(n) = csucc(x)}{n}{m}(refl(csucc(n)))(eq) in
+
+let cnat_preserved1(n: pNat): n.1 = cnat_to_pnat(n.1).1
+  := // proof by induction via n.2
+  n.2{m -> m = cnat_to_pnat(m).1}(refl(czero))({x}-> ind_hyp-> succ_inj{x}{cnat_to_pnat(x).1}(ind_hyp)) in
+
+
+
 2
