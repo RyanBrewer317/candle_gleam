@@ -23,7 +23,7 @@ pub fn pretty_mode(m: BinderMode) -> String {
 }
 
 pub type Sort {
-  TypeSort
+  SetSort
   KindSort
 }
 
@@ -122,7 +122,7 @@ pub fn pretty_syntax(s: Syntax) -> String {
       <> pretty_syntax(scope)
     NatSyntax(n, _) -> int.to_string(n)
     NatTypeSyntax(_) -> "Nat"
-    SortSyntax(TypeSort, _) -> "Type"
+    SortSyntax(SetSort, _) -> "Set"
     SortSyntax(KindSort, _) -> "Kind"
     PiSyntax(mode, x, t, u, _) ->
       pretty_syntax_param(SyntaxParam(mode, x, t)) <> "=> " <> pretty_syntax(u)
@@ -237,7 +237,7 @@ pub fn pretty_term(term: Term) -> String {
       <> pretty_term(v)
       <> " in "
       <> pretty_term(e)
-    Ctor0(Sort(TypeSort), _) -> "Type"
+    Ctor0(Sort(SetSort), _) -> "Set"
     Ctor0(Sort(KindSort), _) -> "Kind"
     Ctor0(NatT, _) -> "Nat"
     Ctor0(Nat(n), _) -> int.to_string(n)
@@ -344,7 +344,7 @@ fn pretty_neutral(n: Neutral) -> String {
 pub fn pretty_value(v: Value) -> String {
   case v {
     VNeutral(n) -> pretty_neutral(n)
-    VSort(TypeSort, _) -> "Type"
+    VSort(SetSort, _) -> "Set"
     VSort(KindSort, _) -> "Kind"
     VNat(n, _) -> int.to_string(n)
     VNatType(_) -> "Nat"

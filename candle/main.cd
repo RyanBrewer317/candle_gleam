@@ -1,37 +1,37 @@
-let subst{A: Type}{a: A}{b: A}(eq: a = b){P: (y: A)=>(a = y)=>Type}
+let subst{A: Set}{a: A}{b: A}(eq: a = b){P: (y: A)=>(a = y)=>Set}
   : P(a)(refl(a)) => P(b)(eq)
   := Psi(eq, P) in
 
 let J
-  {A: Type}
+  {A: Set}
   {x: A}
   {y: A}
   (eq: x = y)
-  {P: (x: A)=> (y: A)=> (eq: x = y)=> Type}
+  {P: (x: A)=> (y: A)=> (eq: x = y)=> Set}
   (w: {i: A}=> P(i)(i)(refl(i)))
   : P(x)(y)(eq)
   := subst{A}{x}{y}(eq){y-> eq-> P(x)(y)(eq)}(w{x}) in
 
-let leibniz{A: Type}{P: A=>Type}{x: A}{y: A}(p: P(x))(eq: x = y): P(y)
+let leibniz{A: Set}{P: A=>Set}{x: A}{y: A}(p: P(x))(eq: x = y): P(y)
   := J{A}{x}{y}(eq){x-> y-> eq-> P(x) => P(y)}({i}-> p->p)(p) in
 
-let theta_phi{A: Type}{B: A=>Type}{a: (x: A) & B(x)}
+let theta_phi{A: Set}{B: A=>Set}{a: (x: A) & B(x)}
   : cast(a.1, a, refl(a.1)) = a
   := refl(a) in
 
-let hetero_uip0{A: Type}{B: Type}{x: A}{y: B}
+let hetero_uip0{A: Set}{B: Set}{x: A}{y: B}
   : (x = x) & (y = y)
   := [refl(x), refl(y)] in
 
-let hetero_uip{A: Type}{B: Type}{x1: A}{y1: A}{x2: B}{y2: B}(e1: x1 = y1)(e2: x2 = y2)
+let hetero_uip{A: Set}{B: Set}{x1: A}{y1: A}{x2: B}{y2: B}(e1: x1 = y1)(e2: x2 = y2)
   : (x1 = y1) & (x2 = y2) := 
   let lemma1: (x1 = x1) & (x2 = x2) := hetero_uip0{A}{B}{x1}{x2} in
   let lemma2: (x1 = y1) & (x2 = x2) := leibniz{A}{z-> (x1 = z) & (x2 = x2)}{x1}{y1}(lemma1)(e1) in
   leibniz{B}{z-> (x1 = y1) & (x2 = z)}{x2}{y2}(lemma2)(e2) in
 
 let theta1
-  {A: Type}
-  {B: A=>Type}
+  {A: Set}
+  {B: A=>Set}
   (x: (a: A) & B(a))
   (y: (a: A) & B(a))
   (eq: x.1 = y.1)
@@ -46,108 +46,108 @@ let theta1
     .2
 in
 
-def cSigma(A: Type)(B: A=>Type): Type
-  := {T: Type} => ((a: A) => B(a) => T) => T in
+def cSigma(A: Set)(B: A=>Set): Set
+  := {T: Set} => ((a: A) => B(a) => T) => T in
 
-let csigma{A: Type}{B: A=>Type}(a: A)(b: B(a)): cSigma(A)(B)
+let csigma{A: Set}{B: A=>Set}(a: A)(b: B(a)): cSigma(A)(B)
   := {T}-> ctor-> ctor(a)(b) in
 
-def PreSigmaInd(A: Type)(B: A=>Type)(s: cSigma(A)(B)): Type :=
-  {P: cSigma(A)(B) => Type} =>
+def PreSigmaInd(A: Set)(B: A=>Set)(s: cSigma(A)(B)): Set :=
+  {P: cSigma(A)(B) => Set} =>
   ((a: A)=> (b: B(a))=> P(csigma{A}{B}(a)(b))) =>
   P(s)
 in
 
-def PreSigma(A: Type)(B: A=>Type): Type
+def PreSigma(A: Set)(B: A=>Set): Set
   := (s: cSigma(A)(B)) & PreSigmaInd(A)(B)(s) in
 
-let pre_sigma{A: Type}{B: (A)=>Type}(a: A)(b: B(a)): PreSigma(A)(B)
+let pre_sigma{A: Set}{B: (A)=>Set}(a: A)(b: B(a)): PreSigma(A)(B)
   := [csigma{A}{B}(a)(b), {P}-> (ctor)-> ctor(a)(b)] in
 
-let pre_sigma_to{A: Type}{B: A=>Type}(s: cSigma(A)(B)): PreSigma(A)(B)
+let pre_sigma_to{A: Set}{B: A=>Set}(s: cSigma(A)(B)): PreSigma(A)(B)
   := s{PreSigma(A)(B)}(pre_sigma{A}{B}) in
 
-let pre_sigma_fixed1{A: Type}{B: A=>Type}(s: PreSigma(A)(B))
+let pre_sigma_fixed1{A: Set}{B: A=>Set}(s: PreSigma(A)(B))
   : pre_sigma_to{A}{B}(s.1).1 = s.1
   := s.2{s-> (pre_sigma_to{A}{B}(s).1 = s)}(a-> b-> refl(csigma{A}{B}(a)(b)))
   in
 
-let pre_sigma_fixed{A: Type}{B: (A)=>Type}(s: PreSigma(A)(B))
+let pre_sigma_fixed{A: Set}{B: (A)=>Set}(s: PreSigma(A)(B))
   : pre_sigma_to{A}{B}(s.1) = s
   := theta1{cSigma(A)(B)}{PreSigmaInd(A)(B)}(pre_sigma_to{A}{B}(s.1))(s)(pre_sigma_fixed1{A}{B}(s)) in
 
 let pre_sigma_ind
-  {A: Type}
-  {B: A=>Type}
+  {A: Set}
+  {B: A=>Set}
   (s: PreSigma(A)(B))
-  {P: PreSigma(A)(B)=>Type}
+  {P: PreSigma(A)(B)=>Set}
   (ctor: (a: A)=> (b: B(a))=> P(pre_sigma{A}{B}(a)(b)))
   : P(s)
   :=
   let lemma: P(pre_sigma_to{A}{B}(s.1)) := s.2{s-> P(pre_sigma_to{A}{B}(s))}(ctor) in
   leibniz{PreSigma(A)(B)}{P}{pre_sigma_to{A}{B}(s.1)}{s}(lemma)(pre_sigma_fixed{A}{B}(s)) in
 
-def SigmaInd(A: Type)(B: A=>Type)(s: PreSigma(A)(B)): Type
-  := {P: PreSigma(A)(B)=>Type}=> ((a: A)=> (b: B(a))=> P(pre_sigma{A}{B}(a)(b)))=> P(s) in
+def SigmaInd(A: Set)(B: A=>Set)(s: PreSigma(A)(B)): Set
+  := {P: PreSigma(A)(B)=>Set}=> ((a: A)=> (b: B(a))=> P(pre_sigma{A}{B}(a)(b)))=> P(s) in
 
-def Sigma(A: Type)(B: A=>Type): Type := (s: PreSigma(A)(B)) & SigmaInd(A)(B)(s) in
+def Sigma(A: Set)(B: A=>Set): Set := (s: PreSigma(A)(B)) & SigmaInd(A)(B)(s) in
 
-let sigma{A: Type}{B: A=>Type}(a: A)(b: B(a)): Sigma(A)(B)
+let sigma{A: Set}{B: A=>Set}(a: A)(b: B(a)): Sigma(A)(B)
   := [pre_sigma{A}{B}(a)(b), {_P}-> ctor-> ctor(a)(b)]
   in
 
-let sigma_to{A: Type}{B: A=>Type}(s: PreSigma(A)(B)): Sigma(A)(B)
+let sigma_to{A: Set}{B: A=>Set}(s: PreSigma(A)(B)): Sigma(A)(B)
   := s.1{Sigma(A)(B)}(sigma{A}{B}) in
 
-let sigma_fixed{A: Type}{B: A=>Type}(s: PreSigma(A)(B)): s = sigma_to{A}{B}(s).1
+let sigma_fixed{A: Set}{B: A=>Set}(s: PreSigma(A)(B)): s = sigma_to{A}{B}(s).1
   := pre_sigma_ind{A}{B}(s){s-> s = sigma_to{A}{B}(s).1}(a-> b-> refl(pre_sigma{A}{B}(a)(b))) in
 
-let pre_sigma_cast{A: Type}{B: A=>Type}(s: PreSigma(A)(B)): Sigma(A)(B)
+let pre_sigma_cast{A: Set}{B: A=>Set}(s: PreSigma(A)(B)): Sigma(A)(B)
   := cast(s, sigma_to{A}{B}(s), sigma_fixed{A}{B}(s)) in
 
 let sigma_ind
-  {A: Type}
-  {B: A=>Type}
+  {A: Set}
+  {B: A=>Set}
   (s: Sigma(A)(B))
-  {P: Sigma(A)(B)=>Type}
+  {P: Sigma(A)(B)=>Set}
   (ctor: (a: A)=> (b: B(a))=> P(sigma{A}{B}(a)(b)))
   : P(s)
   := s.2{s-> P(pre_sigma_cast{A}{B}(s))}(ctor) in
 
 let sigma_rec
-  {A: Type}
-  {B: A=>Type}
+  {A: Set}
+  {B: A=>Set}
   (s: Sigma(A)(B))
-  {C: Type}
+  {C: Set}
   (elim: (a: A)=> B(a)=> C)
   : C
   := sigma_ind{A}{B}(s){_-> C}(elim) in
 
-let dfst{A: Type}{B: A=>Type}(s: Sigma(A)(B)): A
+let dfst{A: Set}{B: A=>Set}(s: Sigma(A)(B)): A
   := sigma_rec{A}{B}(s){A}(a-> b-> a) in
 
-let dsnd{A: Type}{B: A=>Type}(s: Sigma(A)(B)): B(dfst{A}{B}(s))
+let dsnd{A: Set}{B: A=>Set}(s: Sigma(A)(B)): B(dfst{A}{B}(s))
   := sigma_ind{A}{B}(s){s-> B(dfst{A}{B}(s))}(a-> b-> b) in
 
-def Cast(A: Type)(B: Type): Type 
+def Cast(A: Set)(B: Set): Set 
   := (f: A => (A & B)) & ({a: A}=> a = f(a).1) in
 
-let cast_irrel{A: Type}{B: Type}{k: Cast(A)(B)}: Cast(A)(B)
+let cast_irrel{A: Set}{B: Set}{k: Cast(A)(B)}: Cast(A)(B)
   := [a-> cast(a, k.1(a), k.2{a}), {a}-> refl(a)] in
 
-def False: Type := {T: Type}=> T in
+def False: Set := {T: Set}=> T in
 
-def Top: Type := {False}=> False in
+def Top: Set := {False}=> False in
 
-let top_inj{A: Type}(a: A): Top & A
+let top_inj{A: Set}(a: A): Top & A
   := [{f: False}-> cast(a, f{A & False}, f{a = f{A & False}.1}).2, a] in
 
-def View(A: Type)(x: Top): Type := Sigma(Top & A)(z-> x = z.1) in
+def View(A: Set)(x: Top): Set := Sigma(Top & A)(z-> x = z.1) in
 
-let intro_view{A: Type}(x: Top){a: A}{eq: x = top_inj{A}(a).1}: View(A)(x)
+let intro_view{A: Set}(x: Top){a: A}{eq: x = top_inj{A}(a).1}: View(A)(x)
   := sigma{Top & A}{z-> x = z.1}(cast(x, top_inj{A}(a), eq))(refl(x)) in
 
-let elim_view{A: Type}(b: Top){v: View(A)(b)}: A
+let elim_view{A: Set}(b: Top){v: View(A)(b)}: A
   := cast(b, dfst{Top & A}{z-> b = z.1}(v), dsnd{Top & A}{z-> b = z.1}(v)).2 in
 
 2

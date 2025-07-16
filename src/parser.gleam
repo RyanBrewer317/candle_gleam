@@ -5,8 +5,8 @@ import header.{
   type BinderMode, type Pos, type Syntax, type SyntaxParam, AppSyntax,
   CastSyntax, DefSyntax, EqSyntax, ExFalsoSyntax, FstSyntax, IdentSyntax,
   IntersectionSyntax, IntersectionTypeSyntax, LambdaSyntax, LetSyntax, ManyMode,
-  NatSyntax, NatTypeSyntax, PiSyntax, Pos, PsiSyntax, ReflSyntax, SndSyntax,
-  SortSyntax, SyntaxParam, TypeSort, ZeroMode,
+  NatSyntax, NatTypeSyntax, PiSyntax, Pos, PsiSyntax, ReflSyntax, SetSort,
+  SndSyntax, SortSyntax, SyntaxParam, ZeroMode,
 }
 
 pub type Parser(a) {
@@ -262,8 +262,8 @@ fn nat_type() -> Parser(Syntax) {
 
 fn type_type() -> Parser(Syntax) {
   use pos <- do(get_pos())
-  use _ <- do(keyword("Type"))
-  return(SortSyntax(TypeSort, pos))
+  use _ <- do(keyword("Set"))
+  return(SortSyntax(SetSort, pos))
 }
 
 fn relevant_but_ignored() -> Parser(Syntax) {

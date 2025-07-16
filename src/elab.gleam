@@ -6,7 +6,7 @@ import header.{
   Ident, IdentSyntax, Index, Inter, InterT, IntersectionSyntax,
   IntersectionTypeSyntax, KindSort, Lambda, LambdaSyntax, Let, LetSyntax, Level,
   ManyMode, Nat, NatSyntax, NatT, NatTypeSyntax, Pi, PiSyntax, Psi, PsiSyntax,
-  Refl, ReflSyntax, Snd, SndSyntax, Sort, SortSyntax, TypeMode, TypeSort, VApp,
+  Refl, ReflSyntax, SetSort, Snd, SndSyntax, Sort, SortSyntax, TypeMode, VApp,
   VCast, VEq, VExFalso, VFst, VIdent, VInter, VInterT, VLambda, VNat, VNatType,
   VNeutral, VPi, VPsi, VRefl, VSnd, VSort, ZeroMode, inc, pretty_mode,
   pretty_pos, pretty_term, pretty_value,
@@ -97,7 +97,7 @@ pub fn eval(t: Term, env: List(Value)) -> Value {
         Ok(v) -> v
         Error(_) -> panic as "out-of-scope var during eval"
       }
-    Ctor0(Sort(TypeSort), pos) -> VSort(TypeSort, pos)
+    Ctor0(Sort(SetSort), pos) -> VSort(SetSort, pos)
     Ctor0(Sort(KindSort), pos) -> VSort(KindSort, pos)
     Binder(Pi(mode, t), x, u, pos) ->
       VPi(x, mode, eval(t, env), fn(arg) { eval(u, [arg, ..env]) }, pos)
@@ -403,8 +403,8 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
         Error(Nil) -> Error("undefined variable " <> str)
       }
     }
-    SortSyntax(TypeSort, pos) ->
-      Ok(#(Ctor0(Sort(TypeSort), pos), VSort(KindSort, pos)))
+    SortSyntax(SetSort, pos) ->
+      Ok(#(Ctor0(Sort(SetSort), pos), VSort(KindSort, pos)))
     SortSyntax(KindSort, _) -> panic as "parsed impossible kind literal"
     PiSyntax(mode, str, a, b, pos) -> {
       use #(a2, at) <- result.try(infer(ctx, a))
@@ -435,13 +435,13 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
                 <> pretty_pos(pos)
                 <> ")",
               )
-            VSort(TypeSort, _), TypeMode ->
+            VSort(SetSort, _), TypeMode ->
               Error(
                 "type abstractions must return types ("
                 <> pretty_pos(pos)
                 <> ")",
               )
-            VSort(TypeSort, _) as s, _ ->
+            VSort(SetSort, _) as s, _ ->
               Ok(#(Binder(Pi(mode, a2), str, b2, pos), s))
             _, _ -> Error("pi right-side be a type (" <> pretty_pos(pos) <> ")")
           }
@@ -454,7 +454,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       use _ <- result.try(case mode, xtt {
         ManyMode, VSort(KindSort, _) ->
           Error("relevant lambda binding can't bind types")
-        _, VSort(TypeSort, _) -> Ok(Nil)
+        _, VSort(SetSort, _) -> Ok(Nil)
         _, _ -> Error("type annotation in lambda must be a type")
       })
       let xt2v = eval(xt2, ctx.env)
@@ -556,12 +556,12 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       Ok(#(Binder(Let(mode: ZeroMode, val: v2), x, e2, pos), et))
     }
     NatSyntax(n, pos) -> Ok(#(Ctor0(Nat(n), pos), VNatType(pos)))
-    NatTypeSyntax(pos) -> Ok(#(Ctor0(NatT, pos), VSort(TypeSort, pos)))
+    NatTypeSyntax(pos) -> Ok(#(Ctor0(NatT, pos), VSort(SetSort, pos)))
     EqSyntax(a, b, pos) -> {
       use #(a2, t) <- result.try(infer(ctx, a))
       use b2 <- result.try(check(ctx, b, t))
       let t2 = header.quote(ctx.level, t)
-      Ok(#(Ctor3(Eq, a2, b2, t2, pos), VSort(TypeSort, pos)))
+      Ok(#(Ctor3(Eq, a2, b2, t2, pos), VSort(SetSort, pos)))
     }
     ReflSyntax(a, pos) -> {
       use #(a2, t) <- result.try(infer(ctx, a))
@@ -584,7 +584,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
                   "p",
                   TypeMode,
                   VEq(a, y, t, pos),
-                  fn(_) { VSort(TypeSort, pos) },
+                  fn(_) { VSort(SetSort, pos) },
                   pos,
                 )
               },
@@ -615,7 +615,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       }
     }
     IntersectionTypeSyntax(x, a, b, pos) -> {
-      use a2 <- result.try(check(ctx, a, VSort(TypeSort, pos)))
+      use a2 <- result.try(check(ctx, a, VSort(SetSort, pos)))
       let dummy = VNeutral(VIdent(x, TypeMode, ctx.level, pos))
       let a3 = eval(a2, ctx.env)
       let ctx2 =
@@ -625,8 +625,8 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
           env: [dummy, ..ctx.env],
           scope: [#(x, #(TypeMode, a3)), ..ctx.scope],
         )
-      use b2 <- result.try(check(ctx2, b, VSort(TypeSort, pos)))
-      Ok(#(Binder(InterT(a2), x, b2, pos), VSort(TypeSort, pos)))
+      use b2 <- result.try(check(ctx2, b, VSort(SetSort, pos)))
+      Ok(#(Binder(InterT(a2), x, b2, pos), VSort(SetSort, pos)))
     }
     IntersectionSyntax(a, b, pos) -> {
       use #(a2, at) <- result.try(infer(ctx, a))
@@ -689,7 +689,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       ))
       Ok(#(
         Ctor1(ExFalso, a2, pos),
-        VPi("t", ZeroMode, VSort(TypeSort, pos), fn(t) { t }, pos),
+        VPi("t", ZeroMode, VSort(SetSort, pos), fn(t) { t }, pos),
       ))
     }
   }
@@ -699,7 +699,7 @@ fn cbool(pos: Pos) -> Value {
   VPi(
     "t",
     ZeroMode,
-    VSort(TypeSort, pos),
+    VSort(SetSort, pos),
     fn(t) {
       VPi(
         "x",
