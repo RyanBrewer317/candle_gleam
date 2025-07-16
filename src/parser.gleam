@@ -6,7 +6,7 @@ import header.{
   CastSyntax, DefSyntax, EqSyntax, ExFalsoSyntax, FstSyntax, IdentSyntax,
   IntersectionSyntax, IntersectionTypeSyntax, LambdaSyntax, LetSyntax, ManyMode,
   NatSyntax, NatTypeSyntax, PiSyntax, Pos, PsiSyntax, ReflSyntax, SndSyntax,
-  SortSyntax, SyntaxParam, TypeMode, TypeSort, ZeroMode,
+  SortSyntax, SyntaxParam, TypeSort, ZeroMode,
 }
 
 pub type Parser(a) {
@@ -280,12 +280,7 @@ fn relevant_but_ignored() -> Parser(Syntax) {
 
 fn zero_or_type_binder() -> Parser(Syntax) {
   use pos <- do(get_pos())
-  use res <- do(either(char("<"), char("{")))
-  let #(mode, end) = case res {
-    "{" -> #(ZeroMode, char("}"))
-    "<" -> #(TypeMode, char(">"))
-    _ -> panic as "impossible binder mode"
-  }
+  use _ <- do(char("{"))
   use <- commit()
   use <- ws()
   use x_pos <- do(get_pos())
@@ -303,32 +298,32 @@ fn zero_or_type_binder() -> Parser(Syntax) {
             Error(x) -> x
           }
           use t <- do(lazy(expr))
-          use _ <- do(end)
+          use _ <- do(char("}"))
           use <- ws()
           use res <- do(either(string("->"), string("=>")))
           use u <- do(lazy(expr))
           case res {
-            "->" -> return(LambdaSyntax(mode, x, Ok(t), u, pos))
-            "=>" -> return(PiSyntax(mode, x, t, u, pos))
+            "->" -> return(LambdaSyntax(ZeroMode, x, Ok(t), u, pos))
+            "=>" -> return(PiSyntax(ZeroMode, x, t, u, pos))
             _ -> panic as "impossible zero or type binder"
           }
         }
         Error(_) -> {
-          use _ <- do(end)
+          use _ <- do(char("}"))
           use <- ws()
           case id {
             Ok(x) -> {
               use _ <- do(string("->"))
               use e <- do(lazy(expr))
-              return(LambdaSyntax(mode, x, Error(Nil), e, pos))
+              return(LambdaSyntax(ZeroMode, x, Error(Nil), e, pos))
             }
             Error(x) -> {
               use arrow <- do(either(string("->"), string("=>")))
               use e <- do(lazy(expr))
               case arrow {
-                "->" -> return(LambdaSyntax(mode, x, Error(Nil), e, pos))
+                "->" -> return(LambdaSyntax(ZeroMode, x, Error(Nil), e, pos))
                 "=>" ->
-                  return(PiSyntax(mode, "_", IdentSyntax(x, x_pos), e, pos))
+                  return(PiSyntax(ZeroMode, "_", IdentSyntax(x, x_pos), e, pos))
                 _ -> panic as "impossible zero or type binder"
               }
             }
@@ -338,11 +333,11 @@ fn zero_or_type_binder() -> Parser(Syntax) {
     }
     Error(Nil) -> {
       use t <- do(lazy(expr))
-      use _ <- do(end)
+      use _ <- do(char("}"))
       use <- ws()
       use _ <- do(string("=>"))
       use u <- do(lazy(expr))
-      return(PiSyntax(mode, "_", t, u, pos))
+      return(PiSyntax(ZeroMode, "_", t, u, pos))
     }
   }
 }
@@ -427,10 +422,6 @@ fn parse_param() -> Parser(SyntaxParam) {
     "{" -> {
       use _ <- do(char("}"))
       return(SyntaxParam(ZeroMode, x, t))
-    }
-    "<" -> {
-      use _ <- do(char(">"))
-      return(SyntaxParam(TypeMode, x, t))
     }
     _ -> panic as "impossible param mode"
   }
@@ -591,14 +582,6 @@ pub fn expr() -> Parser(Syntax) {
           use arg <- do(lazy(expr))
           use _ <- do(char("}"))
           return(AppSuffix(ZeroMode, arg, pos))
-        },
-        {
-          use pos <- do(get_pos())
-          use _ <- do(char("<"))
-          use <- commit()
-          use arg <- do(lazy(expr))
-          use _ <- do(char(">"))
-          return(AppSuffix(TypeMode, arg, pos))
         },
         {
           use pos <- do(get_pos())

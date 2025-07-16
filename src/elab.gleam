@@ -215,9 +215,10 @@ fn rel_occurs(t: Term, x: Index) -> Result(Pos, Nil) {
 fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
   case s, ty {
     LambdaSyntax(mode1, x, Ok(xt), body, pos), VPi(_, mode2, a, b, _) -> {
-      use _ <- result.try(case mode1 == mode2 {
-        True -> Ok(Nil)
-        False ->
+      use mode <- result.try(case mode1, mode2 {
+        m1, m2 if m1 == m2 -> Ok(m1)
+        ManyMode, TypeMode -> Ok(TypeMode)
+        _, _ ->
           Error(
             "mode mismatch: "
             <> pretty_mode(mode1)
@@ -234,16 +235,16 @@ fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
             "type mismatch: " <> pretty_term(xt2) <> " and " <> pretty_value(a),
           )
       })
-      let v = VNeutral(VIdent(x, mode1, ctx.level, pos))
+      let v = VNeutral(VIdent(x, mode, ctx.level, pos))
       let ctx2 =
         Context(
           level: inc(ctx.level),
           types: [a, ..ctx.types],
           env: [v, ..ctx.env],
-          scope: [#(x, #(mode1, a)), ..ctx.scope],
+          scope: [#(x, #(mode, a)), ..ctx.scope],
         )
       use body2 <- result.try(check(ctx2, body, b(v)))
-      use _ <- result.try(case mode1 {
+      use _ <- result.try(case mode {
         ZeroMode ->
           case rel_occurs(body2, Index(0)) {
             Ok(pos2) ->
@@ -252,12 +253,13 @@ fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
           }
         _ -> Ok(Nil)
       })
-      Ok(Binder(Lambda(mode1), x, body2, pos))
+      Ok(Binder(Lambda(mode), x, body2, pos))
     }
     LambdaSyntax(mode1, x, Error(Nil), body, pos), VPi(_, mode2, a, b, _) -> {
-      use _ <- result.try(case mode1 == mode2 {
-        True -> Ok(Nil)
-        False ->
+      use mode <- result.try(case mode1, mode2 {
+        m1, m2 if m1 == m2 -> Ok(m1)
+        ManyMode, TypeMode -> Ok(TypeMode)
+        _, _ ->
           Error(
             "mode mismatch: "
             <> pretty_mode(mode1)
@@ -265,16 +267,16 @@ fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
             <> pretty_mode(mode2),
           )
       })
-      let dummy = VNeutral(VIdent(x, mode1, ctx.level, pos))
+      let dummy = VNeutral(VIdent(x, mode, ctx.level, pos))
       let ctx2 =
         Context(
           level: inc(ctx.level),
           types: [a, ..ctx.types],
           env: [dummy, ..ctx.env],
-          scope: [#(x, #(mode1, a)), ..ctx.scope],
+          scope: [#(x, #(mode, a)), ..ctx.scope],
         )
       use body2 <- result.try(check(ctx2, body, b(dummy)))
-      Ok(Binder(Lambda(mode1), x, body2, pos))
+      Ok(Binder(Lambda(mode), x, body2, pos))
     }
     LetSyntax(x, xt, v, e, pos), ty -> {
       use #(xt2, xtt) <- result.try(infer(ctx, xt))
@@ -294,6 +296,25 @@ fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
         )
       use e2 <- result.try(check(ctx2, e, ty))
       Ok(Binder(Let(mode: ManyMode, val: v2), x, e2, pos))
+    }
+    DefSyntax(x, xt, v, e, pos), ty -> {
+      use #(xt2, xtt) <- result.try(infer(ctx, xt))
+      use _ <- result.try(case xtt {
+        VSort(_, _) -> Ok(Nil)
+        _ -> Error("type annotation must be a type")
+      })
+      let xt2v = eval(xt2, ctx.env)
+      use v2 <- result.try(check(ctx, v, xt2v))
+      let v3 = eval(v2, ctx.env)
+      let ctx2 =
+        Context(
+          level: inc(ctx.level),
+          types: [xt2v, ..ctx.types],
+          env: [v3, ..ctx.env],
+          scope: [#(x, #(ZeroMode, xt2v)), ..ctx.scope],
+        )
+      use e2 <- result.try(check(ctx2, e, ty))
+      Ok(Binder(Let(mode: ZeroMode, val: v2), x, e2, pos))
     }
     ReflSyntax(x, pos), VEq(a, b, _t, _) -> {
       use #(x2, _xt) <- result.try(infer(ctx, x))
@@ -389,13 +410,10 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       use #(a2, at) <- result.try(infer(ctx, a))
       case at {
         VSort(s1, _) -> {
-          use _ <- result.try(case s1, mode {
-            KindSort, ManyMode ->
-              Error(
-                "relevant lambdas can't bind types (" <> pretty_pos(pos) <> ")",
-              )
-            _, _ -> Ok(Nil)
-          })
+          let mode = case s1, mode {
+            KindSort, ManyMode -> TypeMode
+            _, _ -> mode
+          }
           let dummy = VNeutral(VIdent(str, mode, ctx.level, pos))
           let a3 = eval(a2, ctx.env)
           let ctx2 =
@@ -409,12 +427,8 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
           case bt, mode {
             VSort(KindSort, _) as s, TypeMode ->
               Ok(#(Binder(Pi(mode, a2), str, b2, pos), s))
-            VSort(KindSort, _), ManyMode ->
-              Error(
-                "relevant functions can't return types ("
-                <> pretty_pos(pos)
-                <> ")",
-              )
+            VSort(KindSort, _) as s, ManyMode ->
+              Ok(#(Binder(Pi(TypeMode, a2), str, b2, pos), s))
             VSort(KindSort, _), ZeroMode ->
               Error(
                 "erased functions can't return types ("
@@ -483,6 +497,11 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
           use bar2 <- result.try(check(ctx, bar, a))
           let t = b(eval(bar2, ctx.env))
           Ok(#(Ctor2(App(mode1), foo2, bar2, pos), t))
+        }
+        VPi(_, TypeMode, a, b, _) if mode1 == ManyMode -> {
+          use bar2 <- result.try(check(ctx, bar, a))
+          let t = b(eval(bar2, ctx.env))
+          Ok(#(Ctor2(App(TypeMode), foo2, bar2, pos), t))
         }
         VPi(_, mode2, _, _, _) ->
           Error(
