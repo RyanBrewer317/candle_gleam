@@ -232,15 +232,6 @@ fn pattern_string() -> Parser(String) {
   |> label("identifier")
 }
 
-fn ignored_pattern_string() -> Parser(String) {
-  use _ <- do(char("_"))
-  use res <- do(maybe(ident_string()))
-  case res {
-    Ok(s) -> return("_" <> s)
-    Error(_) -> return("_")
-  }
-}
-
 fn ident() -> Parser(Syntax) {
   use pos <- do(get_pos())
   use s <- do(ident_string())
