@@ -1,3 +1,4 @@
+import gleam/int
 import gleam/result
 import header.{
   type BinderMode, type Index, type Level, type Neutral, type Pos, type Syntax,
@@ -38,6 +39,31 @@ fn erase_neutral(n: Neutral) -> Neutral {
     VPsi(e, _, _) -> erase_neutral(e)
     VFst(a, _) -> erase_neutral(a)
     VSnd(a, _) -> erase_neutral(a)
+  }
+}
+
+pub fn pretty_erasure(v: Value) -> String {
+  case v {
+    VNeutral(VIdent(x, _, _, _)) -> x
+    VNeutral(VApp(_, a, b, _)) ->
+      "(" <> pretty_erasure(VNeutral(a)) <> ")(" <> pretty_erasure(b) <> ")"
+    VNeutral(VPsi(_, _, _)) -> panic
+    VNeutral(VFst(_, _)) -> panic
+    VNeutral(VSnd(_, _)) -> panic
+    VLambda(x, _, body, pos) ->
+      x
+      <> "-> "
+      <> pretty_erasure(body(VNeutral(VIdent(x, ManyMode, Level(0), pos))))
+    VPi(_, _, _, _, _) -> panic
+    VEq(_, _, _, _) -> panic
+    VRefl(_, _) -> panic
+    VInter(_, _, _) -> panic
+    VInterT(_, _, _, _) -> panic
+    VCast(_, _, _, _) -> panic
+    VExFalso(_, _) -> panic
+    VNat(n, _) -> int.to_string(n)
+    VNatType(_) -> panic
+    VSort(_, _) -> panic
   }
 }
 
@@ -540,6 +566,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
           ..ctx.scope
         ])
       use #(e2, et) <- result.try(infer(ctx2, e))
+      // echo x <> " = " <> pretty_erasure(erase(eval(v2, ctx.env)))
       Ok(#(Binder(Let(mode: ManyMode, val: v2), x, e2, pos), et))
     }
     DefSyntax(x, xt, v, e, pos) -> {
