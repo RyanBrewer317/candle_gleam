@@ -19,10 +19,11 @@ import header.{
 
 pub fn force(v: Value) -> Value {
   case v {
-    VMeta(ref, spine, _) as meta ->
-      case get(ref) {
-        Solved(v) -> force(apply_spine(v, spine))
-        Unsolved(_) -> meta
+    VMeta(ref, erased, spine, _) as meta ->
+      case get(ref), erased {
+        Solved(v), True -> force(erase(apply_spine(v, spine)))
+        Solved(v), False -> force(apply_spine(v, spine))
+        Unsolved(_), _ -> meta
       }
     _ -> v
   }
@@ -32,7 +33,7 @@ fn erase(t: Value) -> Value {
   case force(t) {
     VIdent(x, mode, lvl, spine, pos) ->
       VIdent(x, mode, lvl, erase_spine(spine), pos)
-    VMeta(ref, spine, pos) -> VMeta(ref, erase_spine(spine), pos)
+    VMeta(ref, _, spine, pos) -> VMeta(ref, True, spine, pos)
     VLambda(_, ZeroMode, e, p) ->
       erase(e(VIdent("", ZeroMode, Level(0), [], p)))
     VLambda(x, mode, e, p) -> VLambda(x, mode, fn(arg) { erase(e(arg)) }, p)
@@ -64,8 +65,8 @@ fn app(pos: Pos, mode: BinderMode, foo: Value, bar: Value) -> Value {
   case force(foo) {
     VIdent(x, mode2, lvl, spine, pos2) ->
       VIdent(x, mode2, lvl, list.append(spine, [VApp(mode, bar, pos)]), pos2)
-    VMeta(ref, spine, pos2) ->
-      VMeta(ref, list.append(spine, [VApp(mode, bar, pos)]), pos2)
+    VMeta(ref, erased, spine, pos2) ->
+      VMeta(ref, erased, list.append(spine, [VApp(mode, bar, pos)]), pos2)
     VLambda(_, _, f, _) -> f(bar)
     _ -> panic as "impossible value application"
   }
@@ -91,8 +92,8 @@ fn psi(pos: Pos, eq: Value, pred: Value) -> Value {
   case force(eq) {
     VIdent(x, mode, lvl, spine, pos2) ->
       VIdent(x, mode, lvl, list.append(spine, [VPsi(pred, pos)]), pos2)
-    VMeta(ref, spine, pos2) ->
-      VMeta(ref, list.append(spine, [VPsi(pred, pos)]), pos2)
+    VMeta(ref, erased, spine, pos2) ->
+      VMeta(ref, erased, list.append(spine, [VPsi(pred, pos)]), pos2)
     VRefl(_, _) -> VLambda("x", ManyMode, fn(x) { x }, pos)
     _ -> panic as { "impossible equality elimination " <> pretty_value(eq) }
   }
@@ -102,7 +103,8 @@ fn fst(pos: Pos, inter: Value) -> Value {
   case force(inter) {
     VIdent(x, mode, lvl, spine, pos2) ->
       VIdent(x, mode, lvl, list.append(spine, [VFst(pos)]), pos2)
-    VMeta(ref, spine, pos2) -> VMeta(ref, list.append(spine, [VFst(pos)]), pos2)
+    VMeta(ref, erased, spine, pos2) ->
+      VMeta(ref, erased, list.append(spine, [VFst(pos)]), pos2)
     VInter(a, _, _) -> a
     VCast(a, _, _, _) -> {
       // slightly creative but seems right
@@ -116,7 +118,8 @@ fn snd(pos: Pos, inter: Value) -> Value {
   case force(inter) {
     VIdent(x, mode, lvl, spine, pos2) ->
       VIdent(x, mode, lvl, list.append(spine, [VSnd(pos)]), pos2)
-    VMeta(ref, spine, pos2) -> VMeta(ref, list.append(spine, [VSnd(pos)]), pos2)
+    VMeta(ref, erased, spine, pos2) ->
+      VMeta(ref, erased, list.append(spine, [VSnd(pos)]), pos2)
     VInter(_, b, _) -> b
     VCast(a, _, _, _) -> {
       // slightly creative but seems right
@@ -151,9 +154,9 @@ pub fn eval(t: Term, env: List(Value)) -> Value {
         Ok(v) -> v
         Error(_) -> panic as "out-of-scope var during eval"
       }
-    Ctor0(Meta(ref), pos) -> VMeta(ref, [], pos)
+    Ctor0(Meta(ref), pos) -> VMeta(ref, False, [], pos)
     Ctor0(InsertedMeta(ref, mask), pos) ->
-      apps(pos, VMeta(ref, [], pos), env, mask)
+      apps(pos, VMeta(ref, False, [], pos), env, mask)
     Ctor0(Sort(SetSort), pos) -> VSort(SetSort, pos)
     Ctor0(Sort(KindSort), pos) -> VSort(KindSort, pos)
     Binder(Pi(mode, t), x, u, pos) ->
@@ -235,7 +238,11 @@ fn invert_helper(
             Ok(_) -> Error("unify error " <> pretty_pos(pos))
             Error(Nil) -> Ok(#(inc(domain), dict.insert(renaming, lvl, domain)))
           }
-        _ -> panic
+        _ ->
+          panic as {
+            echo force(bar)
+            ""
+          }
       }
     }
     _ -> panic
@@ -248,7 +255,7 @@ fn rename(
   v: Value,
 ) -> Result(Term, String) {
   case force(v) {
-    VMeta(ref, spine, pos) ->
+    VMeta(ref, _, spine, pos) ->
       case get(ref), get(meta) {
         Unsolved(i), Unsolved(j) if i == j ->
           Error("unify error: occurs check failure at " <> pretty_pos(pos))
@@ -400,13 +407,16 @@ fn and(a: Result(Bool, String), b: Result(Bool, String)) -> Result(Bool, String)
 fn unify_helper(lvl: Level, a: Value, b: Value) -> Result(Bool, String) {
   let uh = fn(a, b) { unify_helper(lvl, a, b) }
   case force(a), force(b) {
-    VMeta(m1, spine1, _), VMeta(m2, spine2, _) as meta2 ->
+    VMeta(m1, _, spine1, _), VMeta(m2, _, spine2, _) as meta2 -> {
       case get(m1), get(m2) {
         Unsolved(i), Unsolved(j) if i == j -> unify_spines(lvl, spine1, spine2)
         Unsolved(_), Unsolved(_) -> solve(lvl, m1, spine1, meta2)
         _, _ -> panic
       }
-    VMeta(m, sp, _), t | t, VMeta(m, sp, _) -> solve(lvl, m, sp, t)
+    }
+    VMeta(m, _, sp, _), t | t, VMeta(m, _, sp, _) -> {
+      solve(lvl, m, sp, t)
+    }
     VSort(s1, _), VSort(s2, _) -> Ok(s1 == s2)
     VPi(x, m1, t1, u1, pos), VPi(_, m2, t2, u2, _) -> {
       let dummy = VIdent(x, m1, lvl, [], pos)
@@ -566,7 +576,7 @@ fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
     }
     LetSyntax(x, xt, v, e, pos), ty -> {
       use #(xt2, xtt) <- result.try(infer(ctx, xt))
-      use _ <- result.try(case xtt {
+      use _ <- result.try(case force(xtt) {
         VSort(_, _) -> Ok(Nil)
         _ -> Error("type annotation must be a type")
       })
@@ -586,7 +596,7 @@ fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
     }
     DefSyntax(x, xt, v, e, pos), ty -> {
       use #(xt2, xtt) <- result.try(infer(ctx, xt))
-      use _ <- result.try(case xtt {
+      use _ <- result.try(case force(xtt) {
         VSort(_, _) -> Ok(Nil)
         _ -> Error("type annotation must be a type")
       })
@@ -705,7 +715,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
     SortSyntax(KindSort, _) -> panic as "parsed impossible kind literal"
     PiSyntax(mode, str, a, b, pos) -> {
       use #(a2, at) <- result.try(infer(ctx, a))
-      case at {
+      case force(at) {
         VSort(s1, _) -> {
           let mode = case s1, mode {
             KindSort, ManyMode -> TypeMode
@@ -722,7 +732,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
               mask: [ContextMask(has_def: False, mode:), ..ctx.mask],
             )
           use #(b2, bt) <- result.try(infer(ctx2, b))
-          case bt, mode {
+          case force(bt), mode {
             VSort(KindSort, _) as s, TypeMode ->
               Ok(#(Binder(Pi(mode, a2), str, b2, pos), s))
             VSort(KindSort, _) as s, ManyMode ->
@@ -749,7 +759,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
     }
     LambdaSyntax(mode, str, Ok(xt), body, pos) -> {
       use #(xt2, xtt) <- result.try(infer(ctx, xt))
-      use _ <- result.try(case mode, xtt {
+      use _ <- result.try(case mode, force(xtt) {
         ManyMode, VSort(KindSort, _) ->
           Error("relevant lambda binding can't bind types")
         _, VSort(SetSort, _) -> Ok(Nil)
@@ -792,7 +802,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       Error("can't infer the type of the lambda at " <> pretty_pos(pos))
     AppSyntax(mode1, foo, bar, pos) -> {
       use #(foo2, foot) <- result.try(infer(ctx, foo))
-      case foot {
+      case force(foot) {
         VPi(_, mode2, a, b, _) if mode1 == mode2 -> {
           use bar2 <- result.try(check(ctx, bar, a))
           let t = b(eval(bar2, ctx.env))
@@ -823,7 +833,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
     }
     LetSyntax(x, xt, v, e, pos) -> {
       use #(xt2, xtt) <- result.try(infer(ctx, xt))
-      use _ <- result.try(case xtt {
+      use _ <- result.try(case force(xtt) {
         VSort(_, _) -> Ok(Nil)
         _ -> Error("type annotation must be a type")
       })
@@ -843,7 +853,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
     }
     DefSyntax(x, xt, v, e, pos) -> {
       use #(xt2, xtt) <- result.try(infer(ctx, xt))
-      use _ <- result.try(case xtt {
+      use _ <- result.try(case force(xtt) {
         VSort(_, _) -> Ok(Nil)
         _ -> Error("type annotation must be a type")
       })
@@ -876,7 +886,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
     }
     PsiSyntax(e, p, pos) -> {
       use #(e2, et) <- result.try(infer(ctx, e))
-      case et {
+      case force(et) {
         VEq(a, b, t, _) -> {
           use p2 <- result.try(check(
             ctx,
@@ -952,7 +962,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
     }
     FstSyntax(a, pos) -> {
       use #(a2, at) <- result.try(infer(ctx, a))
-      case at {
+      case force(at) {
         VInterT(_, a, _, _) -> Ok(#(Ctor1(Fst, a2, pos), a))
         _ ->
           Error("Projection requires intersection (" <> pretty_pos(pos) <> ")")
@@ -961,7 +971,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
     SndSyntax(a, pos) -> {
       use #(a2, at) <- result.try(infer(ctx, a))
       let a3 = eval(a2, ctx.env)
-      case at {
+      case force(at) {
         VInterT(_, _, b, _) -> Ok(#(Ctor1(Snd, a2, pos), b(fst(pos, a3))))
         _ ->
           Error("Projection requires intersection (" <> pretty_pos(pos) <> ")")
@@ -969,7 +979,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
     }
     CastSyntax(a, inter, eq, pos) -> {
       use #(inter2, intert) <- result.try(infer(ctx, inter))
-      case intert {
+      case force(intert) {
         VInterT(_, at, _, _) -> {
           let inter3 = eval(inter2, ctx.env)
           use a2 <- result.try(check(ctx, a, at))

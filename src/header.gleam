@@ -323,7 +323,7 @@ pub fn inc(lvl: Level) -> Level {
 
 pub type Value {
   VIdent(String, BinderMode, Level, List(SpineEntry), Pos)
-  VMeta(Ref(Meta), List(SpineEntry), Pos)
+  VMeta(Ref(Meta), Bool, List(SpineEntry), Pos)
   VSort(Sort, Pos)
   VNat(Int, Pos)
   VNatType(Pos)
@@ -351,7 +351,7 @@ pub fn value_pos(v: Value) -> Pos {
         [] -> pos
         [s, ..] -> spine_pos(s)
       }
-    VMeta(_, _, pos) -> pos
+    VMeta(_, _, _, pos) -> pos
     VSort(_, pos) -> pos
     VNat(_, pos) -> pos
     VNatType(pos) -> pos
@@ -389,13 +389,17 @@ fn pretty_spine_entry(base: String, s: SpineEntry) -> String {
 pub fn pretty_value(v: Value) -> String {
   case v {
     VIdent(x, _, _, spine, _) -> list.fold(spine, x, pretty_spine_entry)
-    VMeta(ref, [], _) ->
+    VMeta(ref, _, [], _) ->
       case get(ref) {
         Solved(v) -> pretty_value(v)
         Unsolved(i) -> "?m" <> int.to_string(i)
       }
-    VMeta(ref, spine, pos) ->
-      list.fold(spine, pretty_value(VMeta(ref, [], pos)), pretty_spine_entry)
+    VMeta(ref, erased, spine, pos) ->
+      list.fold(
+        spine,
+        pretty_value(VMeta(ref, erased, [], pos)),
+        pretty_spine_entry,
+      )
     VSort(SetSort, _) -> "Set"
     VSort(KindSort, _) -> "Kind"
     VNat(n, _) -> int.to_string(n)
@@ -467,7 +471,7 @@ pub fn quote(size: Level, v: Value) -> Term {
         Ident(mode, lvl_to_idx(size, lvl), x, pos),
         quote_spine(size),
       )
-    VMeta(ref, spine, pos) ->
+    VMeta(ref, _, spine, pos) ->
       list.fold(spine, Ctor0(Meta(ref), pos), quote_spine(size))
     VSort(s, p) -> Ctor0(Sort(s), p)
     VNat(n, p) -> Ctor0(Nat(n), p)

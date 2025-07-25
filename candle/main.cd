@@ -17,10 +17,10 @@ let J
   {P: (x: A)=> (y: A)=> (eq: x = y)=> Set}
   (w: {i: A}=> P(i)(i)(refl(i)))
   : P(x)(y)(eq)
-  := subst{A}{x}{y}(eq){y-> eq-> P(x)(y)(eq)}(w{x}) in
+  := subst{?}{?}{?}(eq){y-> eq-> P(x)(y)(eq)}(w{?}) in
 
 let leibniz{A: Set}{P: A=>Set}{x: A}{y: A}(p: P(x))(eq: x = y): P(y)
-  := J{A}{x}{y}(eq){x-> y-> eq-> P(x) => P(y)}({i}-> p->p)(p) in
+  := J{?}{?}{?}(eq){x-> y-> eq-> P(x) => P(y)}({i}-> p->p)(p) in
 
 // Now some helpers for equality and dependent intersections
 // Apologies for the greek!
@@ -44,10 +44,10 @@ let hetero_uip{A: Set}{B: Set}{x1: A}{y1: A}{x2: B}{y2: B}(e1: x1 = y1)(e2: x2 =
   : (x1 = y1) & (x2 = y2) := 
   // we simply use `hetero_uip0` for `(x1 = x1) & (x2 = x2)`
   // and then rewrite with our two equalities to get `(x1 = y1) & (x2 = y2)`
-  let lemma1: (x1 = x1) & (x2 = x2) := hetero_uip0{A}{B}{x1}{x2} in
+  let lemma1: (x1 = x1) & (x2 = x2) := hetero_uip0{?}{?}{?}{?} in
   let lemma2: (x1 = y1) & (x2 = x2) 
-    := leibniz{A}{z-> (x1 = z) & (x2 = x2)}{x1}{y1}(lemma1)(e1) in
-  leibniz{B}{z-> (x1 = y1) & (x2 = z)}{x2}{y2}(lemma2)(e2) in
+    := leibniz{?}{z-> (x1 = z) & (x2 = x2)}{?}{?}(lemma1)(e1) in
+  leibniz{?}{z-> (x1 = y1) & (x2 = z)}{?}{?}(lemma2)(e2) in
 
 // a proof of theta: for two intersections x and y, x.1 = y.1 implies x = y
 // theta2 would be "x.2 = y.2 implies x = y," but I haven't needed that so far
@@ -75,11 +75,11 @@ let theta1
   // `leibniz` will rewrite this to a proof of `y.1 = y.1` for us, 
   // but we ignore that boring result via `.2` at the end.
   leibniz
-    {A}
+    {?}
     {z-> (e: z = y.1) & cast(x.1, x, refl(x.1)) = cast(z, y, e)}
-    {x.1}
-    {y.1}
-    (hetero_uip{A}{(a: A) & B(a)}{x.1}{y.1}{x}{x}(eq)(theta_phi{A}{B}{cast(x.1, y, eq)}))
+    {?}
+    {?}
+    (hetero_uip{?}{?}{?}{?}{?}{?}(eq)(theta_phi{?}{?}{cast(x.1, y, eq)}))
     (eq)
     .2
 in
@@ -103,7 +103,7 @@ let csigma{A: Set}{B: A=>Set}(a: A)(b: B(a)): cSigma(A)(B)
 // not a proof.
 def PreSigmaInd(A: Set)(B: A=>Set)(s: cSigma(A)(B)): Set :=
   {P: cSigma(A)(B) => Set} =>
-  ((a: A)=> (b: B(a))=> P(csigma{A}{B}(a)(b))) =>
+  ((a: A)=> (b: B(a))=> P(csigma{?}{B}(a)(b))) =>
   P(s)
 in
 
@@ -123,32 +123,32 @@ def PreSigma(A: Set)(B: A=>Set): Set
 // each with `k-> k(a)(b)` as erasures
 let pre_sigma{A: Set}{B: (A)=>Set}(a: A)(b: B(a)): PreSigma(A)(B)
   := [
-    csigma{A}{B}(a)(b), 
+    csigma{?}{B}(a)(b), 
     {P: cSigma(A)(B) => Set}-> 
-    (ctor: (a: A)=> (b: B(a))=> P(csigma{A}{B}(a)(b)))-> 
+    (ctor: (a: A)=> (b: B(a))=> P(csigma{?}{B}(a)(b)))-> 
       ctor(a)(b)
   ] in
 
 // deconstruct an old sigma, make a new sigma out of the parts
 let pre_sigma_to{A: Set}{B: A=>Set}(s: cSigma(A)(B)): PreSigma(A)(B)
-  := s{PreSigma(A)(B)}(a-> b-> pre_sigma{A}{B}(a)(b)) in
+  := s{?}(a-> b-> pre_sigma{?}{B}(a)(b)) in
 
 // the `cSigma` component is preserved by projecting then doing `pre_sigma_to`
 let pre_sigma_fixed1{A: Set}{B: A=>Set}(s: PreSigma(A)(B))
-  : pre_sigma_to{A}{B}(s.1).1 = s.1
+  : pre_sigma_to{?}{?}(s.1).1 = s.1
   := 
-    s.2{s-> (pre_sigma_to{A}{B}(s).1 = s)}
-    (a-> b-> refl(csigma{A}{B}(a)(b))) // technically a proof by induction! 
+    s.2{s-> (pre_sigma_to{?}{B}(s).1 = s)}
+    (a-> b-> refl(csigma{?}{B}(a)(b))) // technically a proof by induction! 
   in
 
 // the `PreSigma` is preserved by projecting then doing `pre_sigma_to`
 let pre_sigma_fixed{A: Set}{B: (A)=>Set}(s: PreSigma(A)(B))
-  : pre_sigma_to{A}{B}(s.1) = s
+  : pre_sigma_to{?}{?}(s.1) = s
   := 
   // `pre_sigma_fixed1` gives the perfect equality for using `theta1`!
   // remember `theta1` means that x.1 = y.1 implies x = y
-  theta1{cSigma(A)(B)}{PreSigmaInd(A)(B)}
-    (pre_sigma_to{A}{B}(s.1))(s)(pre_sigma_fixed1{A}{B}(s)) 
+  theta1{?}{?}
+    (pre_sigma_to{?}{?}(s.1))(s)(pre_sigma_fixed1{?}{?}(s)) 
   in
 
 // With our conversion proofs we can derive induction for `PreSigma`!
@@ -157,12 +157,12 @@ let pre_sigma_ind
   {B: A=>Set}
   (s: PreSigma(A)(B))
   {P: PreSigma(A)(B)=>Set}
-  (ctor: (a: A)=> (b: B(a))=> P(pre_sigma{A}{B}(a)(b)))
+  (ctor: (a: A)=> (b: B(a))=> P(pre_sigma{?}{B}(a)(b)))
   : P(s)
   :=
-  let lemma: P(pre_sigma_to{A}{B}(s.1)) := s.2{s-> P(pre_sigma_to{A}{B}(s))}(ctor) in
-  leibniz{PreSigma(A)(B)}{z-> P(z)}{pre_sigma_to{A}{B}(s.1)}{s}
-    (lemma)(pre_sigma_fixed{A}{B}(s)) 
+  let lemma: P(pre_sigma_to{?}{B}(s.1)) := s.2{s-> P(pre_sigma_to{?}{B}(s))}(ctor) in
+  leibniz{?}{z-> P(z)}{pre_sigma_to{A}{B}(s.1)}{?}
+    (lemma)(pre_sigma_fixed{?}{?}(s)) 
   in
 
 // We can now implement `fst` and `snd`!
@@ -174,13 +174,13 @@ let pre_sigma_ind
 // Our final `Sigma` will be able to do it more efficiently,
 // and has a nice teaching purpose because we'll do the same trick for natural numbers.
 let pfst{A: Set}{B: A=>Set}(s: PreSigma(A)(B)): A
-  := pre_sigma_ind{A}{B}(s){_-> A}(a-> b-> a) in
-let psnd{A: Set}{B: A=>Set}(s: PreSigma(A)(B)): B(pfst{A}{B}(s))
-  := pre_sigma_ind{A}{B}(s){s-> B(pfst{A}{B}(s))}(a-> b-> b) in
+  := pre_sigma_ind{?}{?}(s){_-> A}(a-> b-> a) in
+let psnd{A: Set}{B: A=>Set}(s: PreSigma(A)(B)): B(pfst{?}{?}(s))
+  := pre_sigma_ind{?}{?}(s){s-> B(pfst{?}{?}(s))}(a-> b-> b) in
 
 // here's a type for the induction principle of `PreSigma`
 def SigmaInd(A: Set)(B: A=>Set)(s: PreSigma(A)(B)): Set
-  := {P: PreSigma(A)(B)=>Set}=> ((a: A)=> (b: B(a))=> P(pre_sigma{A}{B}(a)(b)))=> P(s) in
+  := {P: PreSigma(A)(B)=>Set}=> ((a: A)=> (b: B(a))=> P(pre_sigma{?}{B}(a)(b)))=> P(s) in
 
 // this will be our final sigma type, equivalent to
 // `(s: (s: cSigma(A)(B)) & PreSigmaInd(A)(B)(s)) & SigmaInd(A)(B)(s)`.
@@ -188,19 +188,19 @@ def SigmaInd(A: Set)(B: A=>Set)(s: PreSigma(A)(B)): Set
 def Sigma(A: Set)(B: A=>Set): Set := (s: PreSigma(A)(B)) & SigmaInd(A)(B)(s) in
 
 let sigma{A: Set}{B: A=>Set}(a: A)(b: B(a)): Sigma(A)(B)
-  := [pre_sigma{A}{B}(a)(b), {_P: PreSigma(A)(B)=>Set}-> ctor-> ctor(a)(b)]
+  := [pre_sigma{?}{B}(a)(b), {_P: ?}-> ctor-> ctor(a)(b)]
   in
 
 let sigma_to{A: Set}{B: A=>Set}(s: PreSigma(A)(B)): Sigma(A)(B)
-  := s.1{Sigma(A)(B)}(sigma{A}{B}) in
+  := s.1{?}(sigma{?}{B}) in
 
 // NOTE: this is pretty different from `pre_sigma_fixed`,
 // because this has the shape needed for `cast`, namely "x = y.1"
 // we couldn't prove something of this shape for `pre_sigma_to`.
 // `cast` will grant us new defeq powers!
-let sigma_fixed{A: Set}{B: A=>Set}(s: PreSigma(A)(B)): s = sigma_to{A}{B}(s).1
-  := pre_sigma_ind{A}{B}(s){s-> s = sigma_to{A}{B}(s).1}
-      (a-> b-> refl(pre_sigma{A}{B}(a)(b))) in
+let sigma_fixed{A: Set}{B: A=>Set}(s: PreSigma(A)(B)): s = sigma_to{?}{?}(s).1
+  := pre_sigma_ind{?}{?}(s){s-> s = sigma_to{?}{?}(s).1}
+      (a-> b-> refl(pre_sigma{?}{B}(a)(b))) in
 
 // The difference between `pre_sigma_to` and `pre_sigma_cast` is
 // that the latter is *definitionally* a no-op,
@@ -210,7 +210,7 @@ let sigma_fixed{A: Set}{B: A=>Set}(s: PreSigma(A)(B)): s = sigma_to{A}{B}(s).1
 // Compare to `pre_sigma_to = s-> s(a-> b-> ctor-> ctor(a)(b))`;
 // if sigmas were inductive like natural numbers, this would be O(N)!
 let pre_sigma_cast{A: Set}{B: A=>Set}(s: PreSigma(A)(B)): Sigma(A)(B)
-  := cast(s, sigma_to{A}{B}(s), sigma_fixed{A}{B}(s)) in
+  := cast(s, sigma_to{?}{?}(s), sigma_fixed{?}{?}(s)) in
 
 // induction for `Sigma` follows from induction within the inner `PreSigma`
 // Notice how much simpler this is than `pre_sigma_ind`;
@@ -221,9 +221,9 @@ let sigma_ind
   {B: A=>Set}
   (s: Sigma(A)(B))
   {P: Sigma(A)(B)=>Set}
-  (ctor: (a: A)=> (b: B(a))=> P(sigma{A}{B}(a)(b)))
+  (ctor: (a: A)=> (b: B(a))=> P(sigma{?}{B}(a)(b)))
   : P(s)
-  := s.2{s-> P(pre_sigma_cast{A}{B}(s))}(ctor) in
+  := s.2{s-> P(pre_sigma_cast{?}{?}(s))}(ctor) in
 
 let sigma_rec
   {A: Set}
@@ -232,15 +232,15 @@ let sigma_rec
   {C: Set}
   (elim: (a: A)=> B(a)=> C)
   : C
-  := sigma_ind{A}{B}(s){_-> C}(elim) in
+  := sigma_ind{?}{B}(s){_-> C}(elim) in
 
 // erasure: `s-> (s)(a-> b-> a)` !!
 let dfst{A: Set}{B: A=>Set}(s: Sigma(A)(B)): A
-  := sigma_rec{A}{B}(s){A}(a-> b-> a) in
+  := sigma_rec{?}{?}(s){?}(a-> b-> a) in
 
 // erasure: `s-> (s)(a-> b-> b)` !!
-let dsnd{A: Set}{B: A=>Set}(s: Sigma(A)(B)): B(dfst{A}{B}(s))
-  := sigma_ind{A}{B}(s){s-> B(dfst{A}{B}(s))}(a-> b-> b) in
+let dsnd{A: Set}{B: A=>Set}(s: Sigma(A)(B)): B(dfst{?}{?}(s))
+  := sigma_ind{?}{?}(s){s-> B(dfst{?}{?}(s))}(a-> b-> b) in
 
 // An intermission now, looking at some fun little things
 
@@ -250,7 +250,7 @@ def Cast(A: Set)(B: Set): Set
   := (f: A => (A & B)) & ({a: A}=> a = f(a).1) in
 
 let cast_irrel{A: Set}{B: Set}{k: Cast(A)(B)}: Cast(A)(B)
-  := [a-> cast(a, k.1(a), k.2{a}), {a}-> refl(a)] in
+  := [a-> cast(a, k.1(a), k.2{?}), {a}-> refl(a)] in
 
 def False: Set := {T: Set}=> T in
 
@@ -267,8 +267,8 @@ def View(A: Set)(x: Top): Set := Sigma(Top & A)(z-> x = z.1) in
 
 // we construct a `View` of `x` at type `A` via an erased `a: A`
 // and an erased proof that `a` has the same erasure as `x`
-let intro_view{A: Set}(x: Top){a: A}{eq: x = top_inj{A}(a).1}: View(A)(x)
-  := sigma{Top & A}{z-> x = z.1}(cast(x, top_inj{A}(a), eq))(refl(x)) in
+let intro_view{A: Set}(x: Top){a: A}{eq: x = top_inj{?}(a).1}: View(A)(x)
+  := sigma{Top & A}{z-> x = z.1}(cast(x, top_inj{?}(a), eq))(refl(x)) in
 
 // the `View` is erased, so the sigma only exists at compile time!
 let elim_view{A: Set}(x: Top){v: View(A)(x)}: A
@@ -280,7 +280,7 @@ let elim_view{A: Set}(x: Top){v: View(A)(x)}: A
 // church-encoded natural numbers
 def cNat: Set := {t: Set}=> t => (t=>t) => t in
 let czero: cNat := {t}-> z-> s-> z in
-let csucc(n: cNat): cNat := {t}-> z-> s-> s(n{t}(z)(s)) in
+let csucc(n: cNat): cNat := {t}-> z-> s-> s(n{?}(z)(s)) in
 
 // same routine as sigmas.
 
@@ -289,21 +289,21 @@ def PreNatInd(n: cNat): Set
 
 def pNat: Set := (n: cNat) & PreNatInd(n) in
 let pzero: pNat := [czero, {P}-> z-> s-> z] in
-let psucc(n: pNat): pNat := [csucc(n.1), {P}-> z-> s-> s{n.1}(n.2{P}(z)(s))] in
+let psucc(n: pNat): pNat := [csucc(n.1), {P}-> z-> s-> s{?}(n.2{P}(z)(s))] in
 
-let cnat_to_pnat(n: cNat): pNat := n{pNat}(pzero)(psucc) in
+let cnat_to_pnat(n: cNat): pNat := n{?}(pzero)(psucc) in
 
 // this is a specialization of `x = y` => `f(x) = f(y)`
 let csucc_cong{n: cNat}{m: cNat}(eq: n = m): csucc(n) = csucc(m)
-  := leibniz{cNat}{x-> csucc(n) = csucc(x)}{n}{m}(refl(csucc(n)))(eq) in
+  := leibniz{?}{x-> csucc(n) = csucc(x)}{n}{m}(refl(csucc(n)))(eq) in
 
 let cnat_preserved1(n: pNat): cnat_to_pnat(n.1).1 = n.1
   := // proof by induction via n.2
   n.2{m -> cnat_to_pnat(m).1 = m}
-    (refl(czero))({x}-> ind_hyp-> csucc_cong{cnat_to_pnat(x).1}{x}(ind_hyp)) in
+    (refl(czero))({x}-> ind_hyp-> csucc_cong{?}{?}(ind_hyp)) in
 
 let cnat_preserved(n: pNat): cnat_to_pnat(n.1) = n
-  := theta1{cNat}{PreNatInd}(cnat_to_pnat(n.1))(n)(cnat_preserved1(n)) in
+  := theta1{?}{?}(cnat_to_pnat(n.1))(n)(cnat_preserved1(n)) in
 
 // kinda-sorta induction principle for `pNat`s.
 // The recursive nature of natural numbers causes more problems here than for sigmas:
@@ -314,7 +314,7 @@ let cnat_preserved(n: pNat): cnat_to_pnat(n.1) = n
 let pnat_ind(n: pNat){P: pNat=>Set}(z: P(pzero))(s: {m: cNat}=>P(cnat_to_pnat(m))=>P(cnat_to_pnat(csucc(m))))
   : P(n) := 
   let lemma: P(cnat_to_pnat(n.1)) := n.2{m-> P(cnat_to_pnat(m))}(z)(s) in
-  leibniz{pNat}{P}{cnat_to_pnat(n.1)}{n}(lemma)(cnat_preserved(n)) in
+  leibniz{?}{P}{cnat_to_pnat(n.1)}{?}(lemma)(cnat_preserved(n)) in
 
 // so we go up yet another level, as we did for `Sigma`
 
@@ -325,14 +325,14 @@ def myNat: Set := (n: pNat) & MyNatInd(n) in
 
 let myzero: myNat := [pzero, {P}-> z-> s-> z] in
 
-let mysucc(n: myNat): myNat := [psucc(n.1), {P}-> z-> s-> s{n.1}(n.2{P}(z)(s))] in
+let mysucc(n: myNat): myNat := [psucc(n.1), {P}-> z-> s-> s{?}(n.2{P}(z)(s))] in
 
 // erasure: `n-> n(z-> s-> z)(n-> z-> s-> s(n(z)(s)))`
 // that is, an O(N) converstion from `pNat` to `myNat`
-let pnat_to_mynat(n: pNat): myNat := n.1{myNat}(myzero)(mysucc) in
+let pnat_to_mynat(n: pNat): myNat := n.1{?}(myzero)(mysucc) in
 
 let psucc_cong{n: pNat}{m: pNat}(eq: n = m): psucc(n) = psucc(m)
-  := leibniz{pNat}{x-> psucc(n) = psucc(x)}{n}{m}(refl(psucc(n)))(eq) in
+  := leibniz{?}{x-> psucc(n) = psucc(x)}{n}{?}(refl(psucc(n)))(eq) in
 
 let pnat_preserved(n: pNat): n = pnat_to_mynat(n).1
   := pnat_ind(n)
@@ -340,7 +340,7 @@ let pnat_preserved(n: pNat): n = pnat_to_mynat(n).1
     (refl(pzero))
     ({m}-> ind_hyp-> 
       let m2: pNat := cnat_to_pnat(m) in
-      psucc_cong{m2}{pnat_to_mynat(m2).1}(ind_hyp)
+      psucc_cong{?}{?}(ind_hyp)
     ) in
 
 // definitional equality!
@@ -355,7 +355,7 @@ let induction(n: myNat){P: myNat=>Set}
   : P(myzero) => ({m: myNat}=> P(m) => P(mysucc(m))) => P(n)
   := z-> s-> n.2{m-> P(pnat_cast(m))}(z)
     ({m}-> (ind_hyp: P(pnat_cast(m)))->
-      s{pnat_cast(m)}(ind_hyp) // P(mysucc(pnat_cast(m)))
+      s{?}(ind_hyp) // P(mysucc(pnat_cast(m)))
       // P(mysucc(pnat_cast(m))) is defeq P(pnat_cast(psucc(m)))
       // both erase to P(csucc(m))
     ) in
