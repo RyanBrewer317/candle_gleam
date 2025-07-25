@@ -832,7 +832,8 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       let v3 = eval(v2, ctx.env)
       let ctx2 =
         Context(
-          ..ctx,
+          level: inc(ctx.level),
+          types: [xt2v, ..ctx.types],
           env: [v3, ..ctx.env],
           scope: [#(x, #(ManyMode, xt2v)), ..ctx.scope],
           mask: [ContextMask(has_def: True, mode: ManyMode), ..ctx.mask],
@@ -851,7 +852,8 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       let v3 = eval(v2, ctx.env)
       let ctx2 =
         Context(
-          ..ctx,
+          level: inc(ctx.level),
+          types: [xt2v, ..ctx.types],
           env: [v3, ..ctx.env],
           scope: [#(x, #(ZeroMode, xt2v)), ..ctx.scope],
           mask: [ContextMask(has_def: True, mode: ZeroMode), ..ctx.mask],
