@@ -1,5 +1,19 @@
 import gleam/int
 
+pub type Ref(a)
+
+@external(javascript, "./ffi.mjs", "get")
+pub fn get(ref: Ref(a)) -> a
+
+@external(javascript, "./ffi.mjs", "set")
+pub fn set(ref: Ref(a), a: a) -> Nil
+
+@external(javascript, "./ffi.mjs", "make")
+pub fn new(a: a) -> Ref(a)
+
+@external(javascript, "./ffi.mjs", "next_id")
+pub fn next_id() -> Int
+
 pub type Pos {
   Pos(src: String, line: Int, col: Int)
 }
@@ -58,6 +72,7 @@ pub type Syntax {
   ReflSyntax(Syntax, pos: Pos)
   CastSyntax(Syntax, Syntax, Syntax, pos: Pos)
   ExFalsoSyntax(Syntax, pos: Pos)
+  HoleSyntax(pos: Pos)
 }
 
 pub fn get_pos(s: Syntax) -> Pos {
@@ -80,6 +95,7 @@ pub fn get_pos(s: Syntax) -> Pos {
     ReflSyntax(_, pos) -> pos
     CastSyntax(_, _, _, pos) -> pos
     ExFalsoSyntax(_, pos) -> pos
+    HoleSyntax(pos) -> pos
   }
 }
 
@@ -148,6 +164,7 @@ pub fn pretty_syntax(s: Syntax) -> String {
       <> pretty_syntax(eq)
       <> ")"
     ExFalsoSyntax(a, _) -> "exfalso(" <> pretty_syntax(a) <> ")"
+    HoleSyntax(_) -> "_"
   }
 }
 
@@ -163,6 +180,22 @@ pub fn lvl_to_idx(size: Level, lvl: Level) -> Index {
   Index(size.int - lvl.int - 1)
 }
 
+pub type Meta {
+  Solved(Value)
+  Unsolved(Int)
+}
+
+pub fn force(v: Value) -> Value {
+  case v {
+    VNeutral(VMeta(ref, _)) as meta ->
+      case get(ref) {
+        Solved(v) -> v
+        Unsolved(_) -> meta
+      }
+    _ -> v
+  }
+}
+
 pub type Binder {
   Lambda(mode: BinderMode)
   Pi(mode: BinderMode, ty: Term)
@@ -170,7 +203,13 @@ pub type Binder {
   Let(mode: BinderMode, val: Term)
 }
 
+pub type ContextMask {
+  ContextMask(has_def: Bool, mode: BinderMode)
+}
+
 pub type Ctor0 {
+  Meta(Ref(Meta))
+  InsertedMeta(Ref(Meta), List(ContextMask))
   Sort(Sort)
   NatT
   Nat(Int)
@@ -201,6 +240,17 @@ pub type Term {
   Ctor1(Ctor1, Term, pos: Pos)
   Ctor2(Ctor2, Term, Term, pos: Pos)
   Ctor3(Ctor3, Term, Term, Term, pos: Pos)
+}
+
+pub fn term_pos(t: Term) -> Pos {
+  case t {
+    Ident(_, _, _, pos) -> pos
+    Binder(_, _, _, pos) -> pos
+    Ctor0(_, pos) -> pos
+    Ctor1(_, _, pos) -> pos
+    Ctor2(_, _, _, pos) -> pos
+    Ctor3(_, _, _, _, pos) -> pos
+  }
 }
 
 pub fn pretty_param(
@@ -241,6 +291,8 @@ pub fn pretty_term(term: Term) -> String {
     Ctor0(Sort(KindSort), _) -> "Kind"
     Ctor0(NatT, _) -> "Nat"
     Ctor0(Nat(n), _) -> int.to_string(n)
+    Ctor0(Meta(ref), pos) -> pretty_value(force(VNeutral(VMeta(ref, pos))))
+    Ctor0(InsertedMeta(ref, _), pos) -> pretty_term(Ctor0(Meta(ref), pos))
     Ctor1(Fst, a, _) -> ".1(" <> pretty_term(a) <> ")"
     Ctor1(Snd, a, _) -> ".2(" <> pretty_term(a) <> ")"
     Ctor1(ExFalso, a, _) -> "exfalso(" <> pretty_term(a) <> ")"
@@ -292,6 +344,7 @@ pub type Value {
 
 pub type Neutral {
   VIdent(String, BinderMode, Level, Pos)
+  VMeta(Ref(Meta), Pos)
   VApp(BinderMode, Neutral, Value, Pos)
   VPsi(Neutral, Value, Pos)
   VFst(Neutral, Pos)
@@ -318,6 +371,7 @@ pub fn value_pos(v: Value) -> Pos {
 pub fn neutral_pos(n: Neutral) -> Pos {
   case n {
     VIdent(_, _, _, pos) -> pos
+    VMeta(_, pos) -> pos
     VApp(_, _, _, pos) -> pos
     VPsi(_, _, pos) -> pos
     VFst(_, pos) -> pos
@@ -328,6 +382,11 @@ pub fn neutral_pos(n: Neutral) -> Pos {
 fn pretty_neutral(n: Neutral) -> String {
   case n {
     VIdent(x, _, _, _) -> x
+    VMeta(ref, _) ->
+      case get(ref) {
+        Solved(v) -> pretty_value(v)
+        Unsolved(i) -> "?m" <> int.to_string(i)
+      }
     VApp(ManyMode, a, b, _) ->
       "(" <> pretty_neutral(a) <> ")(" <> pretty_value(b) <> ")"
     VApp(ZeroMode, a, b, _) ->
@@ -438,6 +497,7 @@ pub fn quote(size: Level, v: Value) -> Term {
 fn quote_neutral(size: Level, n: Neutral) -> Term {
   case n {
     VIdent(x, mode, lvl, pos) -> Ident(mode, lvl_to_idx(size, lvl), x, pos)
+    VMeta(ref, pos) -> Ctor0(Meta(ref), pos)
     VApp(mode, n, v, p) ->
       Ctor2(App(mode), quote_neutral(size, n), quote(size, v), p)
     VPsi(e, pred, pos) ->

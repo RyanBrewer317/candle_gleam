@@ -3,10 +3,10 @@ import gleam/list
 import gleam/string
 import header.{
   type BinderMode, type Pos, type Syntax, type SyntaxParam, AppSyntax,
-  CastSyntax, DefSyntax, EqSyntax, ExFalsoSyntax, FstSyntax, IdentSyntax,
-  IntersectionSyntax, IntersectionTypeSyntax, LambdaSyntax, LetSyntax, ManyMode,
-  NatSyntax, NatTypeSyntax, PiSyntax, Pos, PsiSyntax, ReflSyntax, SetSort,
-  SndSyntax, SortSyntax, SyntaxParam, ZeroMode,
+  CastSyntax, DefSyntax, EqSyntax, ExFalsoSyntax, FstSyntax, HoleSyntax,
+  IdentSyntax, IntersectionSyntax, IntersectionTypeSyntax, LambdaSyntax,
+  LetSyntax, ManyMode, NatSyntax, NatTypeSyntax, PiSyntax, Pos, PsiSyntax,
+  ReflSyntax, SetSort, SndSyntax, SortSyntax, SyntaxParam, ZeroMode,
 }
 
 pub type Parser(a) {
@@ -229,18 +229,22 @@ fn ws(k: fn() -> Parser(a)) -> Parser(a) {
 }
 
 fn ident_string() -> Parser(String) {
-  many(either(char("_"), alphanum()))
-  |> map(string.concat)
+  use fst <- do(either(uppercase(), lowercase()))
+  use rest <- do(
+    many0(either(char("_"), alphanum()))
+    |> map(string.concat),
+  )
+  return(fst <> rest)
 }
 
 fn pattern_string() -> Parser(String) {
   either(ident_string(), {
     use _ <- do(char("_"))
-    use res <- do(maybe(ident_string()))
-    case res {
-      Ok(s) -> return("_" <> s)
-      Error(_) -> return("_")
-    }
+    use s <- do(
+      many0(either(char("_"), alphanum()))
+      |> map(string.concat),
+    )
+    return("_" <> s)
   })
   |> label("identifier")
 }
@@ -258,6 +262,12 @@ fn ident() -> Parser(Syntax) {
     }
     Error(Nil) -> return(IdentSyntax(s, pos))
   }
+}
+
+fn hole() -> Parser(Syntax) {
+  use pos <- do(get_pos())
+  use _ <- do(keyword("?"))
+  return(HoleSyntax(pos))
 }
 
 fn nat() -> Parser(Syntax) {
@@ -523,6 +533,7 @@ pub fn expr() -> Parser(Syntax) {
       exfalso(),
       ident(),
       relevant_but_ignored(),
+      hole(),
     ]),
     "expression",
   ))
