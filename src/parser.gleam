@@ -19,7 +19,7 @@ pub type Failure {
 }
 
 pub fn parse(src: String, parser: Parser(a)) -> Result(a, String) {
-  case parser.run(Pos(src, 1, 1), string.to_graphemes(src)) {
+  case parser.run(Pos("", 1, 1), string.to_graphemes(src)) {
     Ok(#(_, _, a)) -> Ok(a)
     Error(err) ->
       case err.expected {
