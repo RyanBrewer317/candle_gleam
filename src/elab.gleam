@@ -84,7 +84,12 @@ fn apps(
       apps(pos, foo, env2, mask2)
     [v, ..env2], [ContextMask(has_def: False, mode:), ..mask2] ->
       app(pos, mode, apps(pos, foo, env2, mask2), v)
-    _, _ -> panic
+    _, _ ->
+      panic as {
+        echo list.length(env)
+        echo list.length(mask)
+        ""
+      }
   }
 }
 
@@ -238,11 +243,7 @@ fn invert_helper(
             Ok(_) -> Error("unify error " <> pretty_pos(pos))
             Error(Nil) -> Ok(#(inc(domain), dict.insert(renaming, lvl, domain)))
           }
-        _ ->
-          panic as {
-            echo force(bar)
-            ""
-          }
+        _ -> panic as { pretty_value(force(bar)) }
       }
     }
     _ -> panic
@@ -822,13 +823,30 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
             <> " at "
             <> pretty_pos(pos),
           )
-        _ ->
-          Error(
-            "application to non-function `"
-            <> pretty_value(foot)
-            <> "` at "
-            <> pretty_pos(pos),
-          )
+        foot -> {
+          let a = eval(fresh_meta(ctx, pos), ctx.env)
+          let b = fn(x) {
+            let ctx2 =
+              Context(
+                level: inc(ctx.level),
+                types: [a, ..ctx.types],
+                env: [x, ..ctx.env],
+                scope: [#("x", #(mode1, VSort(SetSort, pos))), ..ctx.scope],
+                mask: [ContextMask(has_def: False, mode: mode1), ..ctx.mask],
+              )
+            eval(fresh_meta(ctx2, pos), ctx2.env)
+          }
+          let res = unify(ctx.level, foot, VPi("x", mode1, a, b, pos))
+          case res {
+            Ok(True) -> {
+              use bar2 <- result.try(check(ctx, bar, a))
+              let t = b(eval(bar2, ctx.env))
+              Ok(#(Ctor2(App(mode1), foo2, bar2, pos), t))
+            }
+            Ok(False) -> Error("calling non-function at " <> pretty_pos(pos))
+            Error(err) -> Error(err)
+          }
+        }
       }
     }
     LetSyntax(x, xt, v, e, pos) -> {
