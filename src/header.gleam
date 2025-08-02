@@ -42,20 +42,30 @@ pub type Sort {
   KindSort
 }
 
+pub type Icity {
+  Implicit
+  Explicit
+}
+
 pub type SyntaxParam {
-  SyntaxParam(mode: BinderMode, name: String, ty: Syntax)
+  SyntaxParam(mode: BinderMode, implicit: Icity, name: String, ty: Syntax)
 }
 
 pub fn pretty_syntax_param(param: SyntaxParam) -> String {
+  let imp_s = case param.implicit {
+    Implicit -> "? "
+    Explicit -> ""
+  }
+  let inner = imp_s <> param.name <> ": " <> pretty_syntax(param.ty)
   case param.mode {
-    ZeroMode -> "{" <> param.name <> ": " <> pretty_syntax(param.ty) <> "}"
-    ManyMode -> "(" <> param.name <> ": " <> pretty_syntax(param.ty) <> ")"
-    TypeMode -> "<" <> param.name <> ": " <> pretty_syntax(param.ty) <> ">"
+    ZeroMode -> "{" <> inner <> "}"
+    ManyMode -> "(" <> inner <> ")"
+    TypeMode -> "<" <> inner <> ">"
   }
 }
 
 pub type Syntax {
-  LambdaSyntax(BinderMode, String, Result(Syntax, Nil), Syntax, pos: Pos)
+  LambdaSyntax(BinderMode, Icity, String, Result(Syntax, Nil), Syntax, pos: Pos)
   IdentSyntax(String, pos: Pos)
   AppSyntax(BinderMode, Syntax, Syntax, pos: Pos)
   LetSyntax(String, Syntax, Syntax, Syntax, pos: Pos)
@@ -63,7 +73,7 @@ pub type Syntax {
   NatSyntax(Int, pos: Pos)
   NatTypeSyntax(pos: Pos)
   SortSyntax(Sort, pos: Pos)
-  PiSyntax(BinderMode, String, Syntax, Syntax, pos: Pos)
+  PiSyntax(BinderMode, Icity, String, Syntax, Syntax, pos: Pos)
   PsiSyntax(Syntax, Syntax, pos: Pos)
   IntersectionTypeSyntax(String, Syntax, Syntax, pos: Pos)
   IntersectionSyntax(Syntax, Syntax, pos: Pos)
@@ -78,7 +88,7 @@ pub type Syntax {
 
 pub fn get_pos(s: Syntax) -> Pos {
   case s {
-    LambdaSyntax(_, _, _, _, pos) -> pos
+    LambdaSyntax(_, _, _, _, _, pos) -> pos
     IdentSyntax(_, pos) -> pos
     AppSyntax(_, _, _, pos) -> pos
     LetSyntax(_, _, _, _, pos) -> pos
@@ -86,7 +96,7 @@ pub fn get_pos(s: Syntax) -> Pos {
     NatSyntax(_, pos) -> pos
     NatTypeSyntax(pos) -> pos
     SortSyntax(_, pos) -> pos
-    PiSyntax(_, _, _, _, pos) -> pos
+    PiSyntax(_, _, _, _, _, pos) -> pos
     PsiSyntax(_, _, pos) -> pos
     IntersectionTypeSyntax(_, _, _, pos) -> pos
     IntersectionSyntax(_, _, pos) -> pos
@@ -102,14 +112,17 @@ pub fn get_pos(s: Syntax) -> Pos {
 
 pub fn pretty_syntax(s: Syntax) -> String {
   case s {
-    LambdaSyntax(mode, x, Ok(t), e, _) ->
-      pretty_syntax_param(SyntaxParam(mode, x, t)) <> "-> " <> pretty_syntax(e)
-    LambdaSyntax(mode, x, Error(Nil), e, _) -> {
+    LambdaSyntax(mode, imp, x, Ok(t), e, _) ->
+      pretty_syntax_param(SyntaxParam(mode, imp, x, t))
+      <> "-> "
+      <> pretty_syntax(e)
+    LambdaSyntax(mode, imp, x, Error(Nil), e, _) -> {
       let outer = "-> " <> pretty_syntax(e)
+      let inner = pretty_imp(imp) <> x
       case mode {
-        ManyMode -> "(" <> x <> ")" <> outer
-        ZeroMode -> "{" <> x <> "}" <> outer
-        TypeMode -> "<" <> x <> ">" <> outer
+        ManyMode -> "(" <> inner <> ")" <> outer
+        ZeroMode -> "{" <> inner <> "}" <> outer
+        TypeMode -> "<" <> inner <> ">" <> outer
       }
     }
     IdentSyntax(name, _) -> name
@@ -141,12 +154,14 @@ pub fn pretty_syntax(s: Syntax) -> String {
     NatTypeSyntax(_) -> "Nat"
     SortSyntax(SetSort, _) -> "Set"
     SortSyntax(KindSort, _) -> "Kind"
-    PiSyntax(mode, x, t, u, _) ->
-      pretty_syntax_param(SyntaxParam(mode, x, t)) <> "=> " <> pretty_syntax(u)
+    PiSyntax(mode, imp, x, t, u, _) ->
+      pretty_syntax_param(SyntaxParam(mode, imp, x, t))
+      <> "=> "
+      <> pretty_syntax(u)
     PsiSyntax(e, prop, _) ->
       "Psi(" <> pretty_syntax(e) <> ", " <> pretty_syntax(prop) <> ")"
     IntersectionTypeSyntax(x, t, u, _) ->
-      pretty_syntax_param(SyntaxParam(ManyMode, x, t))
+      pretty_syntax_param(SyntaxParam(ManyMode, Explicit, x, t))
       <> "& "
       <> pretty_syntax(u)
     IntersectionSyntax(l, r, _) ->
@@ -187,8 +202,8 @@ pub type Meta {
 }
 
 pub type Binder {
-  Lambda(mode: BinderMode)
-  Pi(mode: BinderMode, ty: Term)
+  Lambda(mode: BinderMode, implicit: Icity)
+  Pi(mode: BinderMode, implicit: Icity, ty: Term)
   InterT(ty: Term)
   Let(mode: BinderMode, val: Term)
 }
@@ -245,12 +260,17 @@ pub fn term_pos(t: Term) -> Pos {
 
 pub fn pretty_param(
   mode: BinderMode,
+  implicit: Icity,
   x: String,
   mb_t: Result(Term, Nil),
 ) -> String {
   let inner = case mb_t {
     Ok(t) -> x <> ": " <> pretty_term(t)
     Error(Nil) -> x
+  }
+  let inner = case implicit {
+    Implicit -> "? " <> inner
+    Explicit -> inner
   }
   case mode {
     ManyMode -> "(" <> inner <> ")"
@@ -259,20 +279,27 @@ pub fn pretty_param(
   }
 }
 
+fn pretty_imp(implicit: Icity) -> String {
+  case implicit {
+    Implicit -> "? "
+    Explicit -> ""
+  }
+}
+
 pub fn pretty_term(term: Term) -> String {
   case term {
     Ident(_, _, s, _) -> s
-    Binder(Lambda(mode), x, e, _) ->
-      pretty_param(mode, x, Error(Nil)) <> "-> " <> pretty_term(e)
-    Binder(Pi(ManyMode, t), "_", u, _) ->
-      "(" <> pretty_term(t) <> ")=>" <> pretty_term(u)
-    Binder(Pi(mode, t), x, u, _) ->
-      pretty_param(mode, x, Ok(t)) <> "=> " <> pretty_term(u)
+    Binder(Lambda(mode, imp), x, e, _) ->
+      pretty_param(mode, imp, x, Error(Nil)) <> "-> " <> pretty_term(e)
+    Binder(Pi(ManyMode, imp, t), "_", u, _) ->
+      "(" <> pretty_imp(imp) <> pretty_term(t) <> ")=>" <> pretty_term(u)
+    Binder(Pi(mode, imp, t), x, u, _) ->
+      pretty_param(mode, imp, x, Ok(t)) <> "=> " <> pretty_term(u)
     Binder(InterT(t), x, u, _) ->
-      pretty_param(ManyMode, x, Ok(t)) <> "& " <> pretty_term(u)
+      pretty_param(ManyMode, Explicit, x, Ok(t)) <> "& " <> pretty_term(u)
     Binder(Let(mode, v), x, e, _) ->
       "let "
-      <> pretty_param(mode, x, Error(Nil))
+      <> pretty_param(mode, Explicit, x, Error(Nil))
       <> " = "
       <> pretty_term(v)
       <> " in "
@@ -327,8 +354,8 @@ pub type Value {
   VSort(Sort, Pos)
   VNat(Int, Pos)
   VNatType(Pos)
-  VPi(String, BinderMode, Value, fn(Value) -> Value, Pos)
-  VLambda(String, BinderMode, fn(Value) -> Value, Pos)
+  VPi(String, BinderMode, Icity, Value, fn(Value) -> Value, Pos)
+  VLambda(String, BinderMode, Icity, fn(Value) -> Value, Pos)
   VEq(Value, Value, Value, Pos)
   VRefl(Value, Pos)
   VInter(Value, Value, Pos)
@@ -355,8 +382,8 @@ pub fn value_pos(v: Value) -> Pos {
     VSort(_, pos) -> pos
     VNat(_, pos) -> pos
     VNatType(pos) -> pos
-    VPi(_, _, _, _, pos) -> pos
-    VLambda(_, _, _, pos) -> pos
+    VPi(_, _, _, _, _, pos) -> pos
+    VLambda(_, _, _, _, pos) -> pos
     VEq(_, _, _, pos) -> pos
     VRefl(_, pos) -> pos
     VInter(_, _, pos) -> pos
@@ -404,8 +431,8 @@ pub fn pretty_value(v: Value) -> String {
     VSort(KindSort, _) -> "Kind"
     VNat(n, _) -> int.to_string(n)
     VNatType(_) -> "Nat"
-    VPi("_", mode, a, b, pos) -> {
-      let li = pretty_value(a)
+    VPi("_", mode, imp, a, b, pos) -> {
+      let li = pretty_imp(imp) <> pretty_value(a)
       case mode {
         ManyMode -> "(" <> li <> ")"
         ZeroMode -> "{" <> li <> "}"
@@ -414,22 +441,24 @@ pub fn pretty_value(v: Value) -> String {
       <> "=> "
       <> pretty_value(b(VIdent("_", mode, Level(0), [], pos)))
     }
-    VPi(x, mode, a, b, pos) ->
+    VPi(x, mode, imp, a, b, pos) ->
       {
+        let inner = pretty_imp(imp) <> x <> ": " <> pretty_value(a)
         case mode {
-          ManyMode -> "(" <> x <> ": " <> pretty_value(a) <> ")"
-          ZeroMode -> "{" <> x <> ": " <> pretty_value(a) <> "}"
-          TypeMode -> "<" <> x <> ": " <> pretty_value(a) <> ">"
+          ManyMode -> "(" <> inner <> ")"
+          ZeroMode -> "{" <> inner <> "}"
+          TypeMode -> "<" <> inner <> ">"
         }
       }
       <> "=> "
       <> pretty_value(b(VIdent(x, mode, Level(0), [], pos)))
-    VLambda(x, mode, f, pos) ->
+    VLambda(x, mode, imp, f, pos) ->
       {
+        let inner = pretty_imp(imp) <> x
         case mode {
-          ManyMode -> "(" <> x <> ")"
-          ZeroMode -> "{" <> x <> "}"
-          TypeMode -> "<" <> x <> ">"
+          ManyMode -> "(" <> inner <> ")"
+          ZeroMode -> "{" <> inner <> "}"
+          TypeMode -> "<" <> inner <> ">"
         }
       }
       <> "-> "
@@ -476,13 +505,13 @@ pub fn quote(size: Level, v: Value) -> Term {
     VSort(s, p) -> Ctor0(Sort(s), p)
     VNat(n, p) -> Ctor0(Nat(n), p)
     VNatType(p) -> Ctor0(NatT, p)
-    VPi(x, mode, a, b, p) -> {
+    VPi(x, mode, imp, a, b, p) -> {
       let n = VIdent(x, mode, size, [], p)
-      Binder(Pi(mode, quote(size, a)), x, quote(inc(size), b(n)), p)
+      Binder(Pi(mode, imp, quote(size, a)), x, quote(inc(size), b(n)), p)
     }
-    VLambda(x, mode, e, p) -> {
+    VLambda(x, mode, imp, e, p) -> {
       let n = VIdent(x, mode, size, [], p)
-      Binder(Lambda(mode), x, quote(inc(size), e(n)), p)
+      Binder(Lambda(mode, imp), x, quote(inc(size), e(n)), p)
     }
     VEq(a, b, t, p) ->
       Ctor3(Eq, quote(size, a), quote(size, b), quote(size, t), p)
