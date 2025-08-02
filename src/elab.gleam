@@ -524,7 +524,7 @@ fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
     -> {
       use mode <- result.try(case mode1, mode2 {
         m1, m2 if m1 == m2 -> Ok(m1)
-        ManyMode, TypeMode -> Ok(TypeMode)
+        ZeroMode, TypeMode -> Ok(TypeMode)
         _, _ ->
           Error(
             "mode mismatch: "
@@ -731,11 +731,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
     PiSyntax(mode, imp, str, a, b, pos) -> {
       use #(a2, at) <- result.try(infer(ctx, a))
       case force(at) {
-        VSort(s1, _) -> {
-          let mode = case s1, mode {
-            KindSort, ManyMode -> TypeMode
-            _, _ -> mode
-          }
+        VSort(_, _) -> {
           let dummy = VIdent(str, mode, ctx.level, [], pos)
           let a3 = eval(a2, ctx.env)
           let ctx2 =
@@ -750,11 +746,11 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
           case force(bt), mode {
             VSort(KindSort, _) as s, TypeMode ->
               Ok(#(Binder(Pi(mode, imp, a2), str, b2, pos), s))
-            VSort(KindSort, _) as s, ManyMode ->
+            VSort(KindSort, _) as s, ZeroMode ->
               Ok(#(Binder(Pi(TypeMode, imp, a2), str, b2, pos), s))
-            VSort(KindSort, _), ZeroMode ->
+            VSort(KindSort, _), ManyMode ->
               Error(
-                "erased functions can't return types ("
+                "relevant functions can't return types ("
                 <> pretty_pos(pos)
                 <> ")",
               )
@@ -825,7 +821,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
           let t = b(eval(bar2, ctx.env))
           Ok(#(Ctor2(App(mode1), foo2, bar2, pos), t))
         }
-        VPi(_, TypeMode, Explicit, a, b, _) if mode1 == ManyMode -> {
+        VPi(_, TypeMode, Explicit, a, b, _) if mode1 == ZeroMode -> {
           use bar2 <- result.try(check(ctx, bar, a))
           let t = b(eval(bar2, ctx.env))
           Ok(#(Ctor2(App(TypeMode), foo2, bar2, pos), t))

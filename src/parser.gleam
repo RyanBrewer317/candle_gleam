@@ -330,14 +330,14 @@ fn annotated_binder() -> Parser(Syntax) {
 
 fn erased_binder() -> Parser(Syntax) {
   use pos <- do(get_pos())
-  use _ <- do(char("{"))
+  use _ <- do(char("<"))
   use <- commit()
   use e <- do(lazy(expr) |> label("expression or binding"))
   use _ <- do(
-    char("}")
+    char(">")
     |> label(case e {
-      IdentSyntax(_, _) -> ": or }"
-      _ -> "}"
+      IdentSyntax(_, _) -> ": or >"
+      _ -> ">"
     }),
   )
   use <- ws()
@@ -390,7 +390,7 @@ fn parens() -> Parser(Syntax) {
 
 fn parse_param(should_commit idk: Bool) -> Parser(SyntaxParam) {
   use <- ws()
-  use res <- do(any_of([char("("), char("{")]))
+  use res <- do(any_of([char("("), char("<")]))
   use <- ws()
   use res2 <- do(maybe(char("?")))
   let imp = case res2 {
@@ -408,8 +408,8 @@ fn parse_param(should_commit idk: Bool) -> Parser(SyntaxParam) {
       use _ <- do(char(")"))
       return(SyntaxParam(ManyMode, imp, x, t))
     }
-    "{" -> {
-      use _ <- do(char("}"))
+    "<" -> {
+      use _ <- do(char(">"))
       return(SyntaxParam(ZeroMode, imp, x, t))
     }
     _ -> panic as "impossible param mode"
@@ -576,10 +576,10 @@ pub fn expr() -> Parser(Syntax) {
         },
         {
           use pos <- do(get_pos())
-          use _ <- do(char("{"))
+          use _ <- do(char("<"))
           use <- commit()
           use arg <- do(lazy(expr))
-          use _ <- do(char("}"))
+          use _ <- do(char(">"))
           return(AppSuffix(ZeroMode, arg, pos))
         },
         {

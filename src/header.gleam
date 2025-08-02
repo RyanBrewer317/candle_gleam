@@ -56,9 +56,13 @@ pub fn pretty_syntax_param(param: SyntaxParam) -> String {
     Implicit -> "? "
     Explicit -> ""
   }
-  let inner = imp_s <> param.name <> ": " <> pretty_syntax(param.ty)
-  case param.mode {
-    ZeroMode -> "{" <> inner <> "}"
+  { imp_s <> param.name <> ": " <> pretty_syntax(param.ty) }
+  |> in_mode(param.mode)
+}
+
+fn in_mode(inner: String, mode: BinderMode) -> String {
+  case mode {
+    ZeroMode -> "<" <> inner <> ">"
     ManyMode -> "(" <> inner <> ")"
     TypeMode -> "<" <> inner <> ">"
   }
@@ -118,20 +122,11 @@ pub fn pretty_syntax(s: Syntax) -> String {
       <> pretty_syntax(e)
     LambdaSyntax(mode, imp, x, Error(Nil), e, _) -> {
       let outer = "-> " <> pretty_syntax(e)
-      let inner = pretty_imp(imp) <> x
-      case mode {
-        ManyMode -> "(" <> inner <> ")" <> outer
-        ZeroMode -> "{" <> inner <> "}" <> outer
-        TypeMode -> "<" <> inner <> ">" <> outer
-      }
+      in_mode(pretty_imp(imp) <> x, mode) <> outer
     }
     IdentSyntax(name, _) -> name
-    AppSyntax(ManyMode, foo, bar, _) ->
-      "(" <> pretty_syntax(foo) <> ")(" <> pretty_syntax(bar) <> ")"
-    AppSyntax(ZeroMode, foo, bar, _) ->
-      "(" <> pretty_syntax(foo) <> "){" <> pretty_syntax(bar) <> "}"
-    AppSyntax(TypeMode, foo, bar, _) ->
-      "(" <> pretty_syntax(foo) <> ")<" <> pretty_syntax(bar) <> ">"
+    AppSyntax(mode, foo, bar, _) ->
+      "(" <> pretty_syntax(foo) <> ")" <> in_mode(pretty_syntax(bar), mode)
     LetSyntax(x, t, v, scope, _) ->
       "let "
       <> x
@@ -268,15 +263,11 @@ pub fn pretty_param(
     Ok(t) -> x <> ": " <> pretty_term(t)
     Error(Nil) -> x
   }
-  let inner = case implicit {
+  case implicit {
     Implicit -> "? " <> inner
     Explicit -> inner
   }
-  case mode {
-    ManyMode -> "(" <> inner <> ")"
-    ZeroMode -> "{" <> inner <> "}"
-    TypeMode -> "<" <> inner <> ">"
-  }
+  |> in_mode(mode)
 }
 
 fn pretty_imp(implicit: Icity) -> String {
@@ -318,14 +309,7 @@ pub fn pretty_term(term: Term) -> String {
     Ctor1(Snd, a, _) -> ".2(" <> pretty_term(a) <> ")"
     Ctor1(ExFalso, a, _) -> "exfalso(" <> pretty_term(a) <> ")"
     Ctor2(App(mode), foo, bar, _) ->
-      "("
-      <> pretty_term(foo)
-      <> ")"
-      <> case mode {
-        ManyMode -> "(" <> pretty_term(bar) <> ")"
-        ZeroMode -> "{" <> pretty_term(bar) <> "}"
-        TypeMode -> "<" <> pretty_term(bar) <> ">"
-      }
+      "(" <> pretty_term(foo) <> ")" <> in_mode(pretty_term(bar), mode)
     Ctor1(Refl, a, _) -> "refl(" <> pretty_term(a) <> ")"
     Ctor2(Inter, a, b, _) ->
       "[" <> pretty_term(a) <> ", " <> pretty_term(b) <> "]"
@@ -404,9 +388,7 @@ pub fn spine_pos(s: SpineEntry) -> Pos {
 
 fn pretty_spine_entry(base: String, s: SpineEntry) -> String {
   case s {
-    VApp(ManyMode, b, _) -> "(" <> base <> ")(" <> pretty_value(b) <> ")"
-    VApp(ZeroMode, b, _) -> "(" <> base <> "){" <> pretty_value(b) <> "}"
-    VApp(TypeMode, b, _) -> "(" <> base <> ")<" <> pretty_value(b) <> ">"
+    VApp(mode, b, _) -> "(" <> base <> ")" <> in_mode(pretty_value(b), mode)
     VPsi(p, _) -> "Psi(" <> base <> ", " <> pretty_value(p) <> ")"
     VFst(_) -> "(" <> base <> ").1"
     VSnd(_) -> "(" <> base <> ").2"
@@ -433,34 +415,19 @@ pub fn pretty_value(v: Value) -> String {
     VNatType(_) -> "Nat"
     VPi("_", mode, imp, a, b, pos) -> {
       let li = pretty_imp(imp) <> pretty_value(a)
-      case mode {
-        ManyMode -> "(" <> li <> ")"
-        ZeroMode -> "{" <> li <> "}"
-        TypeMode -> "<" <> li <> ">"
-      }
+      in_mode(li, mode)
       <> "=> "
       <> pretty_value(b(VIdent("_", mode, Level(0), [], pos)))
     }
     VPi(x, mode, imp, a, b, pos) ->
       {
         let inner = pretty_imp(imp) <> x <> ": " <> pretty_value(a)
-        case mode {
-          ManyMode -> "(" <> inner <> ")"
-          ZeroMode -> "{" <> inner <> "}"
-          TypeMode -> "<" <> inner <> ">"
-        }
+        in_mode(inner, mode)
       }
       <> "=> "
       <> pretty_value(b(VIdent(x, mode, Level(0), [], pos)))
     VLambda(x, mode, imp, f, pos) ->
-      {
-        let inner = pretty_imp(imp) <> x
-        case mode {
-          ManyMode -> "(" <> inner <> ")"
-          ZeroMode -> "{" <> inner <> "}"
-          TypeMode -> "<" <> inner <> ">"
-        }
-      }
+      in_mode(pretty_imp(imp) <> x, mode)
       <> "-> "
       <> pretty_value(f(VIdent(x, mode, Level(0), [], pos)))
     VEq(a, b, t, _) ->
