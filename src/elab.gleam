@@ -69,7 +69,13 @@ fn app(pos: Pos, mode: BinderMode, foo: Value, bar: Value) -> Value {
     VMeta(ref, erased, spine, pos2) ->
       VMeta(ref, erased, list.append(spine, [VApp(mode, bar, pos)]), pos2)
     VLambda(_, _, _, f, _) -> f(bar)
-    _ -> panic as "impossible value application"
+    v ->
+      panic as {
+        "impossible value application "
+        <> pretty_value(v)
+        <> " "
+        <> pretty_pos(header.value_pos(v))
+      }
   }
 }
 
@@ -239,15 +245,33 @@ fn invert_helper(
       // remember the spine is reversed
       use #(domain, renaming) <- result.try(invert_helper(rest))
       case force(bar) {
-        VIdent(_, _, lvl, [], _) ->
+        VIdent(x, _, lvl, [], _) ->
           case dict.get(renaming, lvl) {
-            Ok(_) -> Error("unify error " <> pretty_pos(pos))
+            Ok(_) ->
+              Error(
+                "unification error: "
+                <> x
+                <> " not in renaming scope ("
+                <> pretty_pos(pos)
+                <> ")",
+              )
             Error(Nil) -> Ok(#(inc(domain), dict.insert(renaming, lvl, domain)))
           }
-        _ -> panic as { pretty_value(force(bar)) }
+        _ ->
+          Error(
+            "unification error: non-variable in spine at " <> pretty_pos(pos),
+          )
       }
     }
-    _ -> panic
+    [VFst(pos), ..] | [VSnd(pos), ..] ->
+      Error(
+        "unification error: can't invert meta with projection at "
+        <> pretty_pos(pos),
+      )
+    [VPsi(_, pos), ..] ->
+      Error(
+        "unification error: can't invert meta with psi at " <> pretty_pos(pos),
+      )
   }
 }
 
@@ -998,8 +1022,27 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       use #(a2, at) <- result.try(infer(ctx, a))
       case force(at) {
         VInterT(_, a, _, _) -> Ok(#(Ctor1(Fst, a2, pos), a))
-        _ ->
-          Error("Projection requires intersection (" <> pretty_pos(pos) <> ")")
+        at -> {
+          let a = eval(fresh_meta(ctx, pos), ctx.env)
+          let b = fn(x) {
+            let ctx2 =
+              Context(
+                level: inc(ctx.level),
+                types: [a, ..ctx.types],
+                env: [x, ..ctx.env],
+                scope: [#("x", #(TypeMode, VSort(SetSort, pos))), ..ctx.scope],
+                mask: [ContextMask(has_def: False, mode: TypeMode), ..ctx.mask],
+              )
+            eval(fresh_meta(ctx2, pos), ctx2.env)
+          }
+          let res = unify(ctx.level, at, VInterT("x", a, b, pos))
+          case res {
+            Ok(True) -> Ok(#(Ctor1(Fst, a2, pos), a))
+            Ok(False) ->
+              Error("projection requires intersection at " <> pretty_pos(pos))
+            Error(err) -> Error(err)
+          }
+        }
       }
     }
     SndSyntax(a, pos) -> {
@@ -1007,8 +1050,30 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       let a3 = eval(a2, ctx.env)
       case force(at) {
         VInterT(_, _, b, _) -> Ok(#(Ctor1(Snd, a2, pos), b(fst(pos, a3))))
-        _ ->
-          Error("Projection requires intersection (" <> pretty_pos(pos) <> ")")
+        at -> {
+          let a = eval(fresh_meta(ctx, pos), ctx.env)
+          let b = fn(x) {
+            let ctx2 =
+              Context(
+                level: inc(ctx.level),
+                types: [a, ..ctx.types],
+                env: [x, ..ctx.env],
+                scope: [#("x", #(TypeMode, VSort(SetSort, pos))), ..ctx.scope],
+                mask: [ContextMask(has_def: False, mode: TypeMode), ..ctx.mask],
+              )
+            eval(fresh_meta(ctx2, pos), ctx2.env)
+          }
+          let res = unify(ctx.level, at, VInterT("x", a, b, pos))
+          case res {
+            Ok(True) -> {
+              let t = b(eval(a2, ctx.env))
+              Ok(#(Ctor1(Snd, a2, pos), t))
+            }
+            Ok(False) ->
+              Error("projection requires intersection at " <> pretty_pos(pos))
+            Error(err) -> Error(err)
+          }
+        }
       }
     }
     CastSyntax(a, inter, eq, pos) -> {
