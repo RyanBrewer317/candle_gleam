@@ -19,7 +19,7 @@ let J
   : P<x><y><eq>
   := subst(eq)<<y>-> <eq>-> P<x><y><eq>>(w) in
 
-let leibniz<?A: Set><P: <A>=>Set><x: A><?y: A>(p: P<x>)(eq: x = y): P<y>
+let leibniz<?A: Set><P: <A>=>Set><?x: A><?y: A>(p: P<x>)(eq: x = y): P<y>
   := J(eq)<<x>-> <y>-> <eq>-> P<x> => P<y>>(p->p)(p) in
 
 // Now some helpers for equality and dependent intersections
@@ -46,8 +46,8 @@ let hetero_uip<?A: Set><?B: Set><?x1: A><?y1: A><?x2: B><?y2: B>(e1: x1 = y1)(e2
   // and then rewrite with our two equalities to get `(x1 = y1) & (x2 = y2)`
   let lemma1: (x1 = x1) & (x2 = x2) := hetero_uip0 in
   let lemma2: (x1 = y1) & (x2 = x2) 
-    := leibniz<<z>-> (x1 = z) & (x2 = x2)><?>(lemma1)(e1) in
-  leibniz<<z>-> (x1 = y1) & (x2 = z)><?>(lemma2)(e2) in
+    := leibniz<<z>-> (x1 = z) & (x2 = x2)>(lemma1)(e1) in
+  leibniz<<z>-> (x1 = y1) & (x2 = z)>(lemma2)(e2) in
 
 // a proof of theta: for two intersections x and y, x.1 = y.1 implies x = y
 // theta2 would be "x.2 = y.2 implies x = y," but I haven't needed that so far
@@ -76,7 +76,6 @@ let theta1
   // but we ignore that boring result via `.2` at the end.
   leibniz
     <<z>-> (e: z = y.1) & cast(x.1, x, refl(x.1)) = cast(z, y, e)>
-    <?>
     (hetero_uip(eq)(theta_phi<cast(x.1, y, eq)>))
     (eq)
     .2
@@ -157,7 +156,7 @@ let pre_sigma_ind
   : P<s>
   :=
   let lemma: P<pre_sigma_to(s.1)> := s.2<<s>-> P<pre_sigma_to(s)>>(ctor) in
-  leibniz<<z>-> P<z>><pre_sigma_to(s.1)>
+  leibniz<<z>-> P<z>><? := pre_sigma_to(s.1)>
     (lemma)(pre_sigma_fixed(s)) 
   in
 
@@ -281,22 +280,22 @@ let csucc(n: cNat): cNat := <t>-> z-> s-> s(n<?>(z)(s)) in
 // same routine as sigmas.
 
 def PreNatInd<n: cNat>: Set 
-  := <P: <cNat>=>Set>=> P<czero> => (<m: cNat>=> P<m> => P<csucc(m)>) => P<n> in
+  := <?P: <cNat>=>Set>=> P<czero> => (<?m: cNat>=> P<m> => P<csucc(m)>) => P<n> in
 
 def pNat: Set := (n: cNat) & PreNatInd<n> in
-let pzero: pNat := [czero, <P>-> z-> s-> z] in
-let psucc(n: pNat): pNat := [csucc(n.1), <P>-> z-> s-> s<?>(n.2<P>(z)(s))] in
+let pzero: pNat := [czero, z-> s-> z] in
+let psucc(n: pNat): pNat := [csucc(n.1), <?P>-> z-> s-> s(n.2<?:=P>(z)(s))] in
 
 let cnat_to_pnat(n: cNat): pNat := n<?>(pzero)(psucc) in
 
 // this is a specialization of `x = y` => `f(x) = f(y)`
 let csucc_cong<?n: cNat><?m: cNat>(eq: n = m): csucc(n) = csucc(m)
-  := leibniz<<x>-> csucc(n) = csucc(x)><n>(refl(csucc(n)))(eq) in
+  := leibniz<<x>-> csucc(n) = csucc(x)><?:=n>(refl(csucc(n)))(eq) in
 
 let cnat_preserved1(n: pNat): cnat_to_pnat(n.1).1 = n.1
   := // proof by induction via n.2
-  n.2<<m> -> cnat_to_pnat(m).1 = m>
-    (refl(czero))(<x>-> ind_hyp-> csucc_cong(ind_hyp)) in
+  n.2<? := <m>-> cnat_to_pnat(m).1 = m>
+    (refl(czero))(ind_hyp-> csucc_cong(ind_hyp)) in
 
 let cnat_preserved(n: pNat): cnat_to_pnat(n.1) = n
   := theta1(cnat_to_pnat(n.1))(n)(cnat_preserved1(n)) in
@@ -308,34 +307,34 @@ let cnat_preserved(n: pNat): cnat_to_pnat(n.1) = n
 // `n-> z-> s-> 
 //    n(x-> x)(ind_hyp-> ind_hyp(p-> p)(x-> x))(p-> p)(n(x-> x)(ind_hyp-> ind_hyp(p-> p)(x-> x))(p-> p)(x-> x))(p-> p)(n(z)(s))`
 // which is ridiculously inefficient
-let pnat_ind(n: pNat)<P: <pNat>=>Set>(z: P<pzero>)(s: <m: cNat>=>P<cnat_to_pnat(m)>=>P<cnat_to_pnat(csucc(m))>)
+let pnat_ind(n: pNat)<P: <pNat>=>Set>(z: P<pzero>)(s: <?m: cNat>=>P<cnat_to_pnat(m)>=>P<cnat_to_pnat(csucc(m))>)
   : P<n> := 
-  let lemma: P<cnat_to_pnat(n.1)> := n.2<<m>-> P<cnat_to_pnat(m)>>(z)(s) in
-  leibniz<P><cnat_to_pnat(n.1)>(lemma)(cnat_preserved(n)) in
+  let lemma: P<cnat_to_pnat(n.1)> := n.2<? := <m>-> P<cnat_to_pnat(m)>>(z)(<?m: cNat>-> s<?:=m>) in
+  leibniz<P><? := cnat_to_pnat(n.1)>(lemma)(cnat_preserved(n)) in
 
 // so we go up yet another level, as we did for `Sigma`
 
 def MyNatInd<n: pNat>: Set
-  := <P: <pNat>=>Set>=> P<pzero>=> (<m: pNat>=> P<m> => P<psucc(m)>) => P<n> in
+  := <?P: <pNat>=>Set>=> P<pzero>=> (<?m: pNat>=> P<m> => P<psucc(m)>) => P<n> in
 
 def myNat: Set := (n: pNat) & MyNatInd<n> in
 
-let myzero: myNat := [pzero, <P>-> z-> s-> z] in
+let myzero: myNat := [pzero, z-> s-> z] in
 
-let mysucc(n: myNat): myNat := [psucc(n.1), <P>-> z-> s-> s<?>(n.2<P>(z)(s))] in
+let mysucc(n: myNat): myNat := [psucc(n.1), <?P>->z-> s-> s(n.2<?:=P>(z)(s))] in
 
 // erasure: `n-> n(z-> s-> z)(n-> z-> s-> s(n(z)(s)))`
 // that is, an O(N) converstion from `pNat` to `myNat`
 let pnat_to_mynat(n: pNat): myNat := n.1<myNat>(myzero)(mysucc) in
 
 let psucc_cong<?n: pNat><?m: pNat>(eq: n = m): psucc(n) = psucc(m)
-  := leibniz<<x>-> psucc(n) = psucc(x)><n>(refl(psucc(n)))(eq) in
+  := leibniz<<x>-> psucc(n) = psucc(x)><?:=n>(refl(psucc(n)))(eq) in
 
 let pnat_preserved(n: pNat): n = pnat_to_mynat(n).1
   := pnat_ind(n)
     <<m>-> m = pnat_to_mynat(m).1>
     (refl(pzero))
-    (<m>-> ind_hyp->
+    (ind_hyp->
       psucc_cong(ind_hyp)
     ) in
 
@@ -349,8 +348,8 @@ let pnat_cast(n: pNat): myNat
 // erasure: `n-> z-> s-> n(z)(ind_hyp-> s(ind_hyp))`
 let induction(n: myNat)<P: <myNat>=>Set>
   : P<myzero> => (<?m: myNat>=> P<m> => P<mysucc(m)>) => P<n>
-  := z-> s-> n.2<<m>-> P<pnat_cast(m)>>(z)
-    (<m>-> (ind_hyp: P<pnat_cast(m)>)->
+  := z-> s-> n.2<? := <m>-> P<pnat_cast(m)>>(z)
+    (<?m>-> (ind_hyp: P<pnat_cast(m)>)->
       s(ind_hyp) // P(mysucc(pnat_cast(m)))
       // P<mysucc(pnat_cast(m))> is defeq P<pnat_cast(psucc(m))>
       // both erase to P<csucc(m)>
