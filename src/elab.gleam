@@ -6,15 +6,15 @@ import header.{
   type BinderMode, type ContextMask, type Icity, type Index, type Level,
   type Meta, type Pos, type Ref, type SpineEntry, type Syntax, type Term,
   type Value, App, AppSyntax, Binder, Cast, CastSyntax, ContextMask, Ctor0,
-  Ctor1, Ctor2, Ctor3, DefSyntax, Eq, EqSyntax, ExFalso, ExFalsoSyntax, Explicit,
+  Ctor1, Ctor2, Ctor3, Eq, EqSyntax, ExFalso, ExFalsoSyntax, Explicit,
   Fst, FstSyntax, HoleSyntax, Ident, IdentSyntax, Implicit, Index, InsertedMeta,
   Inter, InterT, IntersectionSyntax, IntersectionTypeSyntax, KindSort, Lambda,
-  LambdaSyntax, Let, LetSyntax, Level, ManyMode, Meta, Nat, NatSyntax, NatT,
-  NatTypeSyntax, Pi, PiSyntax, Psi, PsiSyntax, Refl, ReflSyntax, SetSort, Snd,
-  SndSyntax, Solved, Sort, SortSyntax, TypeMode, Unsolved, VApp, VCast, VEq,
-  VExFalso, VFst, VIdent, VInter, VInterT, VLambda, VMeta, VNat, VNatType, VPi,
-  VPsi, VRefl, VSnd, VSort, ZeroMode, get, inc, lvl_to_idx, new, next_id,
-  pretty_mode, pretty_pos, pretty_term, pretty_value, set,
+  LambdaSyntax, Let, LetSyntax, Level, ManyMode, Meta, Nat, NatSyntax, NatT, NatTypeSyntax, Pi,
+  PiSyntax, Psi, PsiSyntax, Refl, ReflSyntax, SetSort, Snd, SndSyntax, Solved,
+  Sort, SortSyntax, TypeMode, Unsolved, VApp, VCast, VEq, VExFalso, VFst, VIdent,
+  VInter, VInterT, VLambda, VMeta, VNat, VNatType, VPi, VPsi,
+  VRefl, VSnd, VSort, ZeroMode, get, inc, lvl_to_idx, new, next_id, pretty_mode,
+  pretty_pos, pretty_term, pretty_value, set, RowMod, VRowMod, RowModType, VRowModType, DepMod, VDepMod, DepModType, VDepModType, ModSort, Def, DefType, RowModSyntax, DepModSyntax, RowModTypeSyntax, DepModTypeSyntax
 }
 
 pub fn force(v: Value) -> Value {
@@ -31,6 +31,15 @@ pub fn force(v: Value) -> Value {
 
 fn erase(t: Value) -> Value {
   case force(t) {
+    VRowMod(defs, pos) ->
+      VRowMod(
+        list.map(defs, fn(def) { #(def.0, def.1, erase(def.2), erase(def.3)) }),
+        pos,
+      )
+    VRowModType(defs, pos) ->
+      VRowModType(list.map(defs, fn(def) { #(def.0, def.1, erase(def.2)) }), pos)
+    VDepMod(x1, mode1, v1, t1, x2, mode2, v2, t2, pos) -> todo
+    VDepModType(x1, mode1, t1, x2, mode2, t2, pos) -> todo
     VIdent(x, mode, lvl, spine, pos) ->
       VIdent(x, mode, lvl, erase_spine(spine), pos)
     VMeta(ref, _, spine, pos) -> VMeta(ref, True, spine, pos)
@@ -173,11 +182,32 @@ pub fn eval(t: Term, env: List(Value)) -> Value {
         Ok(v) -> v
         Error(_) -> panic as "out-of-scope var during eval"
       }
+    Ctor0(RowMod(defs), pos) -> {
+      let #(_, rev_defs) =
+        list.fold(defs, #(env, []), fn(pair, def) {
+          let #(env, so_far) = pair
+          let t = eval(def.type_, env)
+          let v = eval(def.body, env)
+          #([v, ..env], [#(def.name, def.mode, t, v), ..so_far])
+        })
+      VRowMod(list.reverse(rev_defs), pos)
+    }
+    Ctor0(RowModType(defs), pos) -> {
+      let defs =
+        list.map(defs, fn(def) {
+          let t = eval(def.type_, env)
+          #(def.name, def.mode, t)
+        })
+      VRowModType(defs, pos)
+    }
+    Ctor0(DepMod(def1, def2), pos) -> todo
+    Ctor0(DepModType(def1, def2), pos) -> todo
     Ctor0(Meta(ref), pos) -> VMeta(ref, False, [], pos)
     Ctor0(InsertedMeta(ref, mask), pos) ->
       apps(pos, VMeta(ref, False, [], pos), env, mask)
     Ctor0(Sort(SetSort), pos) -> VSort(SetSort, pos)
     Ctor0(Sort(KindSort), pos) -> VSort(KindSort, pos)
+    Ctor0(Sort(ModSort), pos) -> VSort(ModSort, pos)
     Binder(Pi(mode, imp, t), x, u, pos) ->
       VPi(x, mode, imp, eval(t, env), fn(arg) { eval(u, [arg, ..env]) }, pos)
     Binder(Lambda(mode, imp), x, e, pos) ->
@@ -291,6 +321,19 @@ fn rename(
   v: Value,
 ) -> Result(Term, String) {
   case force(v) {
+    VRowMod(defs, pos) -> {
+      use defs2 <- result.try(
+        list.try_map(defs, fn(def) {
+          use t <- result.try(rename(meta, pr, def.2))
+          use v <- result.try(rename(meta, pr, def.3))
+          Ok(Def(def.0, def.1, t, v))
+        }),
+      )
+      Ok(Ctor0(RowMod(defs2), pos))
+    }
+    VRowModType(defs, pos) -> todo
+    VDepMod(x1, mode1, v1, t1, x2, mode2, v2, t2, pos) -> todo
+    VDepModType(x1, mode1, t1, x2, mode2, t2, pos) -> todo
     VMeta(ref, _, spine, pos) ->
       case get(ref), get(meta) {
         Unsolved(i), Unsolved(j) if i == j ->
@@ -630,7 +673,7 @@ fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
       use body2 <- result.try(check(ctx2, t, b(dummy)))
       Ok(Binder(Lambda(mode, Implicit), x, body2, pos))
     }
-    LetSyntax(x, xt, v, e, pos), ty -> {
+    LetSyntax(x, mode, xt, v, e, pos), ty -> {
       use #(xt2, xtt) <- result.try(infer(ctx, xt))
       use _ <- result.try(case force(xtt) {
         VSort(_, _) -> Ok(Nil)
@@ -644,31 +687,11 @@ fn check(ctx: Context, s: Syntax, ty: Value) -> Result(Term, String) {
           level: inc(ctx.level),
           types: [xt2v, ..ctx.types],
           env: [v3, ..ctx.env],
-          scope: [#(x, #(ManyMode, xt2v)), ..ctx.scope],
-          mask: [ContextMask(has_def: True, mode: ManyMode), ..ctx.mask],
+          scope: [#(x, #(mode, xt2v)), ..ctx.scope],
+          mask: [ContextMask(has_def: True, mode: mode), ..ctx.mask],
         )
       use e2 <- result.try(check(ctx2, e, ty))
-      Ok(Binder(Let(mode: ManyMode, val: v2), x, e2, pos))
-    }
-    DefSyntax(x, xt, v, e, pos), ty -> {
-      use #(xt2, xtt) <- result.try(infer(ctx, xt))
-      use _ <- result.try(case force(xtt) {
-        VSort(_, _) -> Ok(Nil)
-        _ -> Error("type annotation must be a type " <> pretty_pos(pos))
-      })
-      let xt2v = eval(xt2, ctx.env)
-      use v2 <- result.try(check(ctx, v, xt2v))
-      let v3 = eval(v2, ctx.env)
-      let ctx2 =
-        Context(
-          level: inc(ctx.level),
-          types: [xt2v, ..ctx.types],
-          env: [v3, ..ctx.env],
-          scope: [#(x, #(ZeroMode, xt2v)), ..ctx.scope],
-          mask: [ContextMask(has_def: True, mode: ZeroMode), ..ctx.mask],
-        )
-      use e2 <- result.try(check(ctx2, e, ty))
-      Ok(Binder(Let(mode: ZeroMode, val: v2), x, e2, pos))
+      Ok(Binder(Let(mode: mode, val: v2), x, e2, pos))
     }
     ReflSyntax(x, pos), VEq(a, b, _t, _) -> {
       use #(x2, _xt) <- result.try(infer(ctx, x))
@@ -767,6 +790,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
         Error(Nil) -> Error("undefined variable " <> str)
       }
     }
+    SortSyntax(ModSort, pos) -> Ok(#(Ctor0(Sort(ModSort), pos), VSort(KindSort, pos)))
     SortSyntax(SetSort, pos) ->
       Ok(#(Ctor0(Sort(SetSort), pos), VSort(KindSort, pos)))
     SortSyntax(KindSort, _) -> panic as "parsed impossible kind literal"
@@ -909,7 +933,7 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
         }
       }
     }
-    LetSyntax(x, xt, v, e, pos) -> {
+    LetSyntax(x, mode, xt, v, e, pos) -> {
       use #(xt2, xtt) <- result.try(infer(ctx, xt))
       use _ <- result.try(case force(xtt) {
         VSort(_, _) -> Ok(Nil)
@@ -923,31 +947,11 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
           level: inc(ctx.level),
           types: [xt2v, ..ctx.types],
           env: [v3, ..ctx.env],
-          scope: [#(x, #(ManyMode, xt2v)), ..ctx.scope],
-          mask: [ContextMask(has_def: True, mode: ManyMode), ..ctx.mask],
+          scope: [#(x, #(mode, xt2v)), ..ctx.scope],
+          mask: [ContextMask(has_def: True, mode:), ..ctx.mask],
         )
       use #(e2, et) <- result.try(infer(ctx2, e))
-      Ok(#(Binder(Let(mode: ManyMode, val: v2), x, e2, pos), et))
-    }
-    DefSyntax(x, xt, v, e, pos) -> {
-      use #(xt2, xtt) <- result.try(infer(ctx, xt))
-      use _ <- result.try(case force(xtt) {
-        VSort(_, _) -> Ok(Nil)
-        _ -> Error("type annotation must be a type")
-      })
-      let xt2v = eval(xt2, ctx.env)
-      use v2 <- result.try(check(ctx, v, xt2v))
-      let v3 = eval(v2, ctx.env)
-      let ctx2 =
-        Context(
-          level: inc(ctx.level),
-          types: [xt2v, ..ctx.types],
-          env: [v3, ..ctx.env],
-          scope: [#(x, #(ZeroMode, xt2v)), ..ctx.scope],
-          mask: [ContextMask(has_def: True, mode: ZeroMode), ..ctx.mask],
-        )
-      use #(e2, et) <- result.try(infer(ctx2, e))
-      Ok(#(Binder(Let(mode: ZeroMode, val: v2), x, e2, pos), et))
+      Ok(#(Binder(Let(mode:, val: v2), x, e2, pos), et))
     }
     NatSyntax(n, pos) -> Ok(#(Ctor0(Nat(n), pos), VNatType(pos)))
     NatTypeSyntax(pos) -> Ok(#(Ctor0(NatT, pos), VSort(SetSort, pos)))
@@ -1118,6 +1122,24 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       let xt = eval(fresh_meta(ctx, pos), ctx.env)
       Ok(#(x, xt))
     }
+    RowModSyntax(defs, pos) -> {
+      use defs2 <- result.try(
+        list.try_map(defs, fn(def) {
+          use #(xt2, xtt) <- result.try(infer(ctx, def.type_))
+          use _ <- result.try(case force(xtt) {
+            VSort(_, _) -> Ok(Nil)
+            _ -> Error("type annotation must be a type")
+          })
+          let xt2v = eval(xt2, ctx.env)
+          use v2 <- result.try(check(ctx, def.body, xt2v))
+          Ok(Def(def.name, def.mode, xt2, v2))
+        }),
+      )
+      Ok(#(Ctor0(RowMod(defs2), pos), todo))
+    }
+    RowModTypeSyntax(defs, pos) -> todo
+    DepModSyntax(def1, def2, pos) -> todo
+    DepModTypeSyntax(def1, def2, pos) -> todo
   }
 }
 

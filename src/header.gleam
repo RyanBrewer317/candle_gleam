@@ -40,6 +40,7 @@ pub fn pretty_mode(m: BinderMode) -> String {
 pub type Sort {
   SetSort
   KindSort
+  ModSort
 }
 
 pub type Icity {
@@ -68,12 +69,19 @@ fn in_mode(inner: String, mode: BinderMode) -> String {
   }
 }
 
+pub type DefSyntax {
+  DefSyntax(name: String, mode: BinderMode, type_: Syntax, body: Syntax)
+}
+
+pub type DefTypeSyntax {
+  DefTypeSyntax(name: String, mode: BinderMode, type_: Syntax)
+}
+
 pub type Syntax {
   LambdaSyntax(BinderMode, Icity, String, Result(Syntax, Nil), Syntax, pos: Pos)
   IdentSyntax(String, pos: Pos)
   AppSyntax(BinderMode, Icity, Syntax, Syntax, pos: Pos)
-  LetSyntax(String, Syntax, Syntax, Syntax, pos: Pos)
-  DefSyntax(String, Syntax, Syntax, Syntax, pos: Pos)
+  LetSyntax(String, BinderMode, Syntax, Syntax, Syntax, pos: Pos)
   NatSyntax(Int, pos: Pos)
   NatTypeSyntax(pos: Pos)
   SortSyntax(Sort, pos: Pos)
@@ -88,6 +96,10 @@ pub type Syntax {
   CastSyntax(Syntax, Syntax, Syntax, pos: Pos)
   ExFalsoSyntax(Syntax, pos: Pos)
   HoleSyntax(pos: Pos)
+  DepModSyntax(DefSyntax, DefSyntax, pos: Pos)
+  DepModTypeSyntax(DefTypeSyntax, DefTypeSyntax, pos: Pos)
+  RowModSyntax(List(DefSyntax), pos: Pos)
+  RowModTypeSyntax(List(DefTypeSyntax), pos: Pos)
 }
 
 pub fn get_pos(s: Syntax) -> Pos {
@@ -95,8 +107,7 @@ pub fn get_pos(s: Syntax) -> Pos {
     LambdaSyntax(_, _, _, _, _, pos) -> pos
     IdentSyntax(_, pos) -> pos
     AppSyntax(_, _, _, _, pos) -> pos
-    LetSyntax(_, _, _, _, pos) -> pos
-    DefSyntax(_, _, _, _, pos) -> pos
+    LetSyntax(_, _, _, _, _, pos) -> pos
     NatSyntax(_, pos) -> pos
     NatTypeSyntax(pos) -> pos
     SortSyntax(_, pos) -> pos
@@ -111,6 +122,10 @@ pub fn get_pos(s: Syntax) -> Pos {
     CastSyntax(_, _, _, pos) -> pos
     ExFalsoSyntax(_, pos) -> pos
     HoleSyntax(pos) -> pos
+    DepModSyntax(_, _, pos) -> pos
+    DepModTypeSyntax(_, _, pos) -> pos
+    RowModSyntax(_, pos) -> pos
+    RowModTypeSyntax(_, pos) -> pos
   }
 }
 
@@ -132,17 +147,11 @@ pub fn pretty_syntax(s: Syntax) -> String {
       <> pretty_syntax(foo)
       <> ")"
       <> in_mode("?: " <> pretty_syntax(bar), mode)
-    LetSyntax(x, t, v, scope, _) ->
-      "let "
-      <> x
-      <> ": "
-      <> pretty_syntax(t)
-      <> " = "
-      <> pretty_syntax(v)
-      <> " in "
-      <> pretty_syntax(scope)
-    DefSyntax(x, t, v, scope, _) ->
-      "def "
+    LetSyntax(x, is_erased, t, v, scope, _) ->
+      case is_erased {
+        ManyMode -> "let "
+        _ -> "def "
+      }
       <> x
       <> ": "
       <> pretty_syntax(t)
@@ -154,6 +163,7 @@ pub fn pretty_syntax(s: Syntax) -> String {
     NatTypeSyntax(_) -> "Nat"
     SortSyntax(SetSort, _) -> "Set"
     SortSyntax(KindSort, _) -> "Kind"
+    SortSyntax(ModSort, _) -> "Mod"
     PiSyntax(mode, imp, x, t, u, _) ->
       pretty_syntax_param(SyntaxParam(mode, imp, x, t))
       <> "=> "
@@ -181,6 +191,10 @@ pub fn pretty_syntax(s: Syntax) -> String {
       <> ")"
     ExFalsoSyntax(a, _) -> "exfalso(" <> pretty_syntax(a) <> ")"
     HoleSyntax(_) -> "_"
+    RowModSyntax(_, _) -> "#package#"
+    RowModTypeSyntax(_, _) -> "#interface#"
+    DepModSyntax(_, _, _) -> "#mod#"
+    DepModTypeSyntax(_, _, _) -> "#sig#"
   }
 }
 
@@ -212,7 +226,19 @@ pub type ContextMask {
   ContextMask(has_def: Bool, mode: BinderMode)
 }
 
+pub type Def {
+  Def(name: String, mode: BinderMode, type_: Term, body: Term)
+}
+
+pub type DefType {
+  DefType(name: String, mode: BinderMode, type_: Term)
+}
+
 pub type Ctor0 {
+  DepMod(Def, Def)
+  DepModType(DefType, DefType)
+  RowMod(List(Def))
+  RowModType(List(DefType))
   Meta(Ref(Meta))
   InsertedMeta(Ref(Meta), List(ContextMask))
   Sort(Sort)
@@ -300,8 +326,13 @@ pub fn pretty_term(term: Term) -> String {
       <> pretty_term(v)
       <> " in "
       <> pretty_term(e)
+    Ctor0(DepMod(_, _), _) -> "#mod#"
+    Ctor0(DepModType(_, _), _) -> "#sig#"
+    Ctor0(RowMod(_), _) -> "#package#"
+    Ctor0(RowModType(_), _) -> "#interface#"
     Ctor0(Sort(SetSort), _) -> "Set"
     Ctor0(Sort(KindSort), _) -> "Kind"
+    Ctor0(Sort(ModSort), _) -> "Mod"
     Ctor0(NatT, _) -> "Nat"
     Ctor0(Nat(n), _) -> int.to_string(n)
     Ctor0(Meta(ref), _) ->
@@ -340,6 +371,10 @@ pub fn inc(lvl: Level) -> Level {
 }
 
 pub type Value {
+  VDepMod(String, BinderMode, Value, Value, String, BinderMode, fn(Value) -> Value, fn(Value) -> Value, Pos)
+  VDepModType(String, BinderMode, Value, String, BinderMode, fn(Value) -> Value, Pos)
+  VRowMod(List(#(String, BinderMode, Value, Value)), Pos)
+  VRowModType(List(#(String, BinderMode, Value)), Pos)
   VIdent(String, BinderMode, Level, List(SpineEntry), Pos)
   VMeta(Ref(Meta), Bool, List(SpineEntry), Pos)
   VSort(Sort, Pos)
@@ -364,6 +399,10 @@ pub type SpineEntry {
 
 pub fn value_pos(v: Value) -> Pos {
   case v {
+    VDepMod(_, _, _, _, _, _, _, _, pos) -> pos
+    VDepModType(_, _, _, _, _, _, pos) -> pos
+    VRowMod(_, pos) -> pos
+    VRowModType(_, pos) -> pos
     VIdent(_, _, _, spine, pos) ->
       case list.reverse(spine) {
         [] -> pos
@@ -404,6 +443,10 @@ fn pretty_spine_entry(base: String, s: SpineEntry) -> String {
 
 pub fn pretty_value(v: Value) -> String {
   case v {
+    VDepMod(_, _, _, _, _, _, _, _, _) -> "#mod#"
+    VDepModType(_, _, _, _, _, _, _) -> "#sig#"
+    VRowMod(_, _) -> "#package#"
+    VRowModType(_, _) -> "#interface#"
     VIdent(x, _, _, spine, _) -> list.fold(spine, x, pretty_spine_entry)
     VMeta(ref, _, [], _) ->
       case get(ref) {
@@ -418,6 +461,7 @@ pub fn pretty_value(v: Value) -> String {
       )
     VSort(SetSort, _) -> "Set"
     VSort(KindSort, _) -> "Kind"
+    VSort(ModSort, _) -> "Mod"
     VNat(n, _) -> int.to_string(n)
     VNatType(_) -> "Nat"
     VPi("_", mode, imp, a, b, pos) -> {
@@ -468,6 +512,30 @@ pub fn pretty_value(v: Value) -> String {
 
 pub fn quote(size: Level, v: Value) -> Term {
   case v {
+    VDepMod(x1, mode1, v1, t1, x2, mode2, v2, t2, pos) -> {
+      let n = VIdent(x1, mode1, size, [], pos)
+      Ctor0(DepMod(Def(x1, mode1, quote(size, v1), quote(size, t1)), Def(x2, mode2, quote(inc(size), v2(n)), quote(inc(size), t2(n)))), pos)
+    }
+    VDepModType(x1, mode1, v1, x2, mode2, v2, pos) -> {
+      let n = VIdent(x1, mode1, size, [], pos)
+      Ctor0(DepModType(DefType(x1, mode1, quote(size, v1)), DefType(x2, mode2, quote(inc(size), v2(n)))), pos)
+    }
+    VRowMod(defs, pos) ->
+      Ctor0(
+        RowMod(
+          list.map(defs, fn(def) {
+            Def(def.0, def.1, quote(size, def.2), quote(size, def.3))
+          }),
+        ),
+        pos,
+      )
+    VRowModType(defs, pos) ->
+      Ctor0(
+        RowModType(
+          list.map(defs, fn(def) { DefType(def.0, def.1, quote(size, def.2)) }),
+        ),
+        pos,
+      )
     VIdent(x, mode, lvl, spine, pos) ->
       list.fold(
         spine,

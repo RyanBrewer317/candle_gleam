@@ -480,11 +480,12 @@ fn let_binding() -> Parser(Syntax) {
   use e <- do(lazy(expr))
   let t = build_pi(pos, params, t)
   let v = build_lambda(pos, params, v)
-  case res {
-    "let" -> return(LetSyntax(x, t, v, e, pos))
-    "def" -> return(DefSyntax(x, t, v, e, pos))
+  let mode = case res {
+    "let" -> ManyMode
+    "def" -> ZeroMode
     _ -> panic as "impossible binder"
   }
+  return(LetSyntax(x, mode, t, v, e, pos))
 }
 
 fn refl() -> Parser(Syntax) {
