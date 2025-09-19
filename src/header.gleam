@@ -70,7 +70,13 @@ fn in_mode(inner: String, mode: BinderMode) -> String {
 }
 
 pub type DefSyntax {
-  DefSyntax(name: String, mode: BinderMode, type_: Syntax, body: Syntax)
+  DefSyntax(
+    name: String,
+    mode: BinderMode,
+    type_: Syntax,
+    body: Syntax,
+    pos: Pos,
+  )
 }
 
 pub type DefTypeSyntax {
@@ -371,8 +377,26 @@ pub fn inc(lvl: Level) -> Level {
 }
 
 pub type Value {
-  VDepMod(String, BinderMode, Value, Value, String, BinderMode, fn(Value) -> Value, fn(Value) -> Value, Pos)
-  VDepModType(String, BinderMode, Value, String, BinderMode, fn(Value) -> Value, Pos)
+  VDepMod(
+    String,
+    BinderMode,
+    Value,
+    Value,
+    String,
+    BinderMode,
+    fn(Value) -> Value,
+    fn(Value) -> Value,
+    Pos,
+  )
+  VDepModType(
+    String,
+    BinderMode,
+    Value,
+    String,
+    BinderMode,
+    fn(Value) -> Value,
+    Pos,
+  )
   VRowMod(List(#(String, BinderMode, Value, Value)), Pos)
   VRowModType(List(#(String, BinderMode, Value)), Pos)
   VIdent(String, BinderMode, Level, List(SpineEntry), Pos)
@@ -514,11 +538,23 @@ pub fn quote(size: Level, v: Value) -> Term {
   case v {
     VDepMod(x1, mode1, v1, t1, x2, mode2, v2, t2, pos) -> {
       let n = VIdent(x1, mode1, size, [], pos)
-      Ctor0(DepMod(Def(x1, mode1, quote(size, v1), quote(size, t1)), Def(x2, mode2, quote(inc(size), v2(n)), quote(inc(size), t2(n)))), pos)
+      Ctor0(
+        DepMod(
+          Def(x1, mode1, quote(size, v1), quote(size, t1)),
+          Def(x2, mode2, quote(inc(size), v2(n)), quote(inc(size), t2(n))),
+        ),
+        pos,
+      )
     }
     VDepModType(x1, mode1, v1, x2, mode2, v2, pos) -> {
       let n = VIdent(x1, mode1, size, [], pos)
-      Ctor0(DepModType(DefType(x1, mode1, quote(size, v1)), DefType(x2, mode2, quote(inc(size), v2(n)))), pos)
+      Ctor0(
+        DepModType(
+          DefType(x1, mode1, quote(size, v1)),
+          DefType(x2, mode2, quote(inc(size), v2(n))),
+        ),
+        pos,
+      )
     }
     VRowMod(defs, pos) ->
       Ctor0(

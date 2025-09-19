@@ -2,11 +2,12 @@ import gleam/int
 import gleam/list
 import gleam/string
 import header.{
-  type BinderMode, type Icity, type Pos, type Syntax, type SyntaxParam,
-  AppSyntax, CastSyntax, DefSyntax, EqSyntax, ExFalsoSyntax, Explicit, FstSyntax,
-  HoleSyntax, IdentSyntax, Implicit, IntersectionSyntax, IntersectionTypeSyntax,
-  LambdaSyntax, LetSyntax, ManyMode, NatSyntax, NatTypeSyntax, PiSyntax, Pos,
-  PsiSyntax, ReflSyntax, SetSort, SndSyntax, SortSyntax, SyntaxParam, ZeroMode,
+  type BinderMode, type DefSyntax, type Icity, type Pos, type Syntax,
+  type SyntaxParam, AppSyntax, CastSyntax, DefSyntax, EqSyntax, ExFalsoSyntax,
+  Explicit, FstSyntax, HoleSyntax, IdentSyntax, Implicit, IntersectionSyntax,
+  IntersectionTypeSyntax, LambdaSyntax, LetSyntax, ManyMode, NatSyntax,
+  NatTypeSyntax, PiSyntax, Pos, PsiSyntax, ReflSyntax, RowModSyntax, SetSort,
+  SndSyntax, SortSyntax, SyntaxParam, ZeroMode,
 }
 
 pub type Parser(a) {
@@ -572,6 +573,7 @@ pub fn expr() -> Parser(Syntax) {
       intersection(),
       cast(),
       exfalso(),
+      row_mod(),
       ident(),
       relevant_but_ignored(),
       hole(),
@@ -675,4 +677,38 @@ pub fn expr() -> Parser(Syntax) {
   }
   use <- ws()
   return(e)
+}
+
+fn stmt() -> Parser(DefSyntax) {
+  use pos <- do(get_pos())
+  use <- ws()
+  use res <- do(either(keyword("fn"), keyword("def")))
+  use <- ws()
+  use <- commit()
+  use x <- do(pattern_string())
+  use <- ws()
+  use params <- do(many0(parse_param(should_commit: True)))
+  use <- ws()
+  use _ <- do(char(":") |> label(": or parameter"))
+  use t <- do(lazy(expr))
+  use _ <- do(char("{"))
+  use v <- do(lazy(expr))
+  use _ <- do(char("}"))
+  let t = build_pi(pos, params, t)
+  let v = build_lambda(pos, params, v)
+  let mode = case res {
+    "fn" -> ManyMode
+    "def" -> ZeroMode
+    _ -> panic as "impossible binder"
+  }
+  use <- ws()
+  return(DefSyntax(x, mode, t, v, pos))
+}
+
+pub fn row_mod() -> Parser(Syntax) {
+  use pos <- do(get_pos())
+  use _ <- do(keyword("package"))
+  use defs <- do(many0(stmt()))
+  use _ <- do(keyword("end"))
+  return(RowModSyntax(defs, pos))
 }

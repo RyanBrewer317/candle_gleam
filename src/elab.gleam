@@ -6,15 +6,17 @@ import header.{
   type BinderMode, type ContextMask, type Icity, type Index, type Level,
   type Meta, type Pos, type Ref, type SpineEntry, type Syntax, type Term,
   type Value, App, AppSyntax, Binder, Cast, CastSyntax, ContextMask, Ctor0,
-  Ctor1, Ctor2, Ctor3, Eq, EqSyntax, ExFalso, ExFalsoSyntax, Explicit,
-  Fst, FstSyntax, HoleSyntax, Ident, IdentSyntax, Implicit, Index, InsertedMeta,
+  Ctor1, Ctor2, Ctor3, Def, DefType, DepMod, DepModSyntax, DepModType,
+  DepModTypeSyntax, Eq, EqSyntax, ExFalso, ExFalsoSyntax, Explicit, Fst,
+  FstSyntax, HoleSyntax, Ident, IdentSyntax, Implicit, Index, InsertedMeta,
   Inter, InterT, IntersectionSyntax, IntersectionTypeSyntax, KindSort, Lambda,
-  LambdaSyntax, Let, LetSyntax, Level, ManyMode, Meta, Nat, NatSyntax, NatT, NatTypeSyntax, Pi,
-  PiSyntax, Psi, PsiSyntax, Refl, ReflSyntax, SetSort, Snd, SndSyntax, Solved,
-  Sort, SortSyntax, TypeMode, Unsolved, VApp, VCast, VEq, VExFalso, VFst, VIdent,
-  VInter, VInterT, VLambda, VMeta, VNat, VNatType, VPi, VPsi,
-  VRefl, VSnd, VSort, ZeroMode, get, inc, lvl_to_idx, new, next_id, pretty_mode,
-  pretty_pos, pretty_term, pretty_value, set, RowMod, VRowMod, RowModType, VRowModType, DepMod, VDepMod, DepModType, VDepModType, ModSort, Def, DefType, RowModSyntax, DepModSyntax, RowModTypeSyntax, DepModTypeSyntax
+  LambdaSyntax, Let, LetSyntax, Level, ManyMode, Meta, ModSort, Nat, NatSyntax,
+  NatT, NatTypeSyntax, Pi, PiSyntax, Psi, PsiSyntax, Refl, ReflSyntax, RowMod,
+  RowModSyntax, RowModType, RowModTypeSyntax, SetSort, Snd, SndSyntax, Solved,
+  Sort, SortSyntax, TypeMode, Unsolved, VApp, VCast, VDepMod, VDepModType, VEq,
+  VExFalso, VFst, VIdent, VInter, VInterT, VLambda, VMeta, VNat, VNatType, VPi,
+  VPsi, VRefl, VRowMod, VRowModType, VSnd, VSort, ZeroMode, get, inc, lvl_to_idx,
+  new, next_id, pretty_mode, pretty_pos, pretty_term, pretty_value, set,
 }
 
 pub fn force(v: Value) -> Value {
@@ -37,9 +39,32 @@ fn erase(t: Value) -> Value {
         pos,
       )
     VRowModType(defs, pos) ->
-      VRowModType(list.map(defs, fn(def) { #(def.0, def.1, erase(def.2)) }), pos)
-    VDepMod(x1, mode1, v1, t1, x2, mode2, v2, t2, pos) -> todo
-    VDepModType(x1, mode1, t1, x2, mode2, t2, pos) -> todo
+      VRowModType(
+        list.map(defs, fn(def) { #(def.0, def.1, erase(def.2)) }),
+        pos,
+      )
+    VDepMod(x1, mode1, v1, t1, x2, mode2, v2, t2, pos) ->
+      VDepMod(
+        x1,
+        mode1,
+        erase(v1),
+        erase(t1),
+        x2,
+        mode2,
+        fn(arg) { erase(v2(arg)) },
+        fn(arg) { erase(t2(arg)) },
+        pos,
+      )
+    VDepModType(x1, mode1, t1, x2, mode2, t2, pos) ->
+      VDepModType(
+        x1,
+        mode1,
+        erase(t1),
+        x2,
+        mode2,
+        fn(arg) { erase(t2(arg)) },
+        pos,
+      )
     VIdent(x, mode, lvl, spine, pos) ->
       VIdent(x, mode, lvl, erase_spine(spine), pos)
     VMeta(ref, _, spine, pos) -> VMeta(ref, True, spine, pos)
@@ -86,6 +111,7 @@ fn app(pos: Pos, mode: BinderMode, icit: Icity, foo: Value, bar: Value) -> Value
     VLambda(_, _, _, f, _) -> f(bar)
     v ->
       panic as {
+        echo v
         "impossible value application "
         <> pretty_value(v)
         <> " "
@@ -200,8 +226,28 @@ pub fn eval(t: Term, env: List(Value)) -> Value {
         })
       VRowModType(defs, pos)
     }
-    Ctor0(DepMod(def1, def2), pos) -> todo
-    Ctor0(DepModType(def1, def2), pos) -> todo
+    Ctor0(DepMod(def1, def2), pos) ->
+      VDepMod(
+        def1.name,
+        def1.mode,
+        eval(def1.body, env),
+        eval(def1.type_, env),
+        def2.name,
+        def2.mode,
+        fn(arg) { eval(def2.body, [arg, ..env]) },
+        fn(arg) { eval(def2.type_, [arg, ..env]) },
+        pos,
+      )
+    Ctor0(DepModType(def1, def2), pos) ->
+      VDepModType(
+        def1.name,
+        def1.mode,
+        eval(def1.type_, env),
+        def2.name,
+        def2.mode,
+        fn(arg) { eval(def2.type_, [arg, ..env]) },
+        pos,
+      )
     Ctor0(Meta(ref), pos) -> VMeta(ref, False, [], pos)
     Ctor0(InsertedMeta(ref, mask), pos) ->
       apps(pos, VMeta(ref, False, [], pos), env, mask)
@@ -331,9 +377,32 @@ fn rename(
       )
       Ok(Ctor0(RowMod(defs2), pos))
     }
-    VRowModType(defs, pos) -> todo
-    VDepMod(x1, mode1, v1, t1, x2, mode2, v2, t2, pos) -> todo
-    VDepModType(x1, mode1, t1, x2, mode2, t2, pos) -> todo
+    VRowModType(defs, pos) -> {
+      use defs2 <- result.try(
+        list.try_map(defs, fn(def) {
+          use t <- result.try(rename(meta, pr, def.2))
+          Ok(DefType(def.0, def.1, t))
+        }),
+      )
+      Ok(Ctor0(RowModType(defs2), pos))
+    }
+    VDepMod(x1, mode1, v1, t1, x2, mode2, v2, t2, pos) -> {
+      use v12 <- result.try(rename(meta, pr, v1))
+      use t12 <- result.try(rename(meta, pr, t1))
+      let dummy = VIdent(x1, mode1, pr.codomain_size, [], pos)
+      use v22 <- result.try(rename(meta, lift(pr), v2(dummy)))
+      use t22 <- result.try(rename(meta, lift(pr), t2(dummy)))
+      Ok(Ctor0(DepMod(Def(x1, mode1, t12, v12), Def(x2, mode2, t22, v22)), pos))
+    }
+    VDepModType(x1, mode1, t1, x2, mode2, t2, pos) -> {
+      use t12 <- result.try(rename(meta, pr, t1))
+      let dummy = VIdent(x1, mode1, pr.codomain_size, [], pos)
+      use t22 <- result.try(rename(meta, lift(pr), t2(dummy)))
+      Ok(Ctor0(
+        DepModType(DefType(x1, mode1, t12), DefType(x2, mode2, t22)),
+        pos,
+      ))
+    }
     VMeta(ref, _, spine, pos) ->
       case get(ref), get(meta) {
         Unsolved(i), Unsolved(j) if i == j ->
@@ -790,7 +859,8 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
         Error(Nil) -> Error("undefined variable " <> str)
       }
     }
-    SortSyntax(ModSort, pos) -> Ok(#(Ctor0(Sort(ModSort), pos), VSort(KindSort, pos)))
+    SortSyntax(ModSort, pos) ->
+      Ok(#(Ctor0(Sort(ModSort), pos), VSort(KindSort, pos)))
     SortSyntax(SetSort, pos) ->
       Ok(#(Ctor0(Sort(SetSort), pos), VSort(KindSort, pos)))
     SortSyntax(KindSort, _) -> panic as "parsed impossible kind literal"
@@ -1123,6 +1193,37 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       Ok(#(x, xt))
     }
     RowModSyntax(defs, pos) -> {
+      use #(defs2_rev, defs2t_rev, _) <- result.try(
+        list.try_fold(defs, #([], [], ctx), fn(state, def) {
+          let #(so_far, so_far_t, ctxx) = state
+          use #(xt2, xtt) <- result.try(infer(ctxx, def.type_))
+          use _ <- result.try(case force(xtt) {
+            VSort(_, _) -> Ok(Nil)
+            _ -> Error("type annotation must be a type")
+          })
+          let xt2v = eval(xt2, ctxx.env)
+          use v2 <- result.try(check(ctxx, def.body, xt2v))
+          let v2v = eval(v2, ctxx.env)
+          let ctxx2 =
+            Context(
+              level: ctx.level,
+              types: [xt2v, ..ctxx.types],
+              env: [v2v, ..ctxx.env],
+              scope: [#(def.name, #(def.mode, v2v)), ..ctxx.scope],
+              mask: [ContextMask(has_def: False, mode: def.mode), ..ctxx.mask],
+            )
+          Ok(#(
+            [Def(def.name, def.mode, xt2, v2), ..so_far],
+            [#(def.name, def.mode, xt2v), ..so_far_t],
+            ctxx2,
+          ))
+        }),
+      )
+      let defs3 = list.reverse(defs2_rev)
+      let defs3t = list.reverse(defs2t_rev)
+      Ok(#(Ctor0(RowMod(defs3), pos), VRowModType(defs3t, pos)))
+    }
+    RowModTypeSyntax(defs, pos) -> {
       use defs2 <- result.try(
         list.try_map(defs, fn(def) {
           use #(xt2, xtt) <- result.try(infer(ctx, def.type_))
@@ -1130,16 +1231,75 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
             VSort(_, _) -> Ok(Nil)
             _ -> Error("type annotation must be a type")
           })
-          let xt2v = eval(xt2, ctx.env)
-          use v2 <- result.try(check(ctx, def.body, xt2v))
-          Ok(Def(def.name, def.mode, xt2, v2))
+          Ok(DefType(def.name, def.mode, xt2))
         }),
       )
-      Ok(#(Ctor0(RowMod(defs2), pos), todo))
+      Ok(#(Ctor0(RowModType(defs2), pos), VSort(ModSort, pos)))
     }
-    RowModTypeSyntax(defs, pos) -> todo
-    DepModSyntax(def1, def2, pos) -> todo
-    DepModTypeSyntax(def1, def2, pos) -> todo
+    DepModSyntax(def1, def2, pos) -> {
+      use #(xt1, _xtt1) <- result.try(infer(ctx, def1.type_))
+      // TODO: check xt1 is a type
+      let xt1v = eval(xt1, ctx.env)
+      use v11 <- result.try(check(ctx, def1.body, xt1v))
+      let dummy = VIdent(def1.name, def1.mode, ctx.level, [], pos)
+      let v12 = eval(v11, ctx.env)
+      let ctx2 =
+        Context(
+          level: inc(ctx.level),
+          types: [v12, ..ctx.types],
+          env: [dummy, ..ctx.env],
+          scope: [#(def1.name, #(def1.mode, v12)), ..ctx.scope],
+          mask: [ContextMask(has_def: False, mode: def1.mode), ..ctx.mask],
+        )
+      use #(xt2, _xtt2) <- result.try(infer(ctx2, def2.type_))
+      // TODO: check if xt2 is a type
+      let xt2v = eval(xt2, ctx2.env)
+      use v21 <- result.try(check(ctx2, def2.body, xt2v))
+      Ok(#(
+        Ctor0(
+          DepMod(
+            Def(def1.name, def1.mode, xt1, v11),
+            Def(def2.name, def2.mode, xt2, v21),
+          ),
+          pos,
+        ),
+        VDepModType(
+          def1.name,
+          def1.mode,
+          xt1v,
+          def2.name,
+          def2.mode,
+          fn(x) {
+            let ctx2 =
+              Context(
+                level: inc(ctx.level),
+                types: [xt1v, ..ctx.types],
+                env: [x, ..ctx.env],
+                scope: [#(def1.name, #(TypeMode, x)), ..ctx.scope],
+                mask: [ContextMask(has_def: False, mode: TypeMode), ..ctx.mask],
+              )
+            let assert Ok(#(_, t)) = infer(ctx2, def2.body)
+            t
+          },
+          pos,
+        ),
+      ))
+    }
+    DepModTypeSyntax(def1, def2, pos) -> {
+      use #(xt1, _xtt1) <- result.try(infer(ctx, def1.type_))
+      use #(xt2, _xtt2) <- result.try(infer(ctx, def2.type_))
+      // TODO: check if xt1 and xt2 are types
+      Ok(#(
+        Ctor0(
+          DepModType(
+            DefType(def1.name, def1.mode, xt1),
+            DefType(def2.name, def2.mode, xt2),
+          ),
+          pos,
+        ),
+        VSort(ModSort, pos),
+      ))
+    }
   }
 }
 
