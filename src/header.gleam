@@ -104,8 +104,6 @@ pub type Syntax {
   HoleSyntax(pos: Pos)
   DepModSyntax(DefSyntax, DefSyntax, pos: Pos)
   DepModTypeSyntax(DefTypeSyntax, DefTypeSyntax, pos: Pos)
-  RowModSyntax(List(DefSyntax), pos: Pos)
-  RowModTypeSyntax(List(DefTypeSyntax), pos: Pos)
 }
 
 pub fn get_pos(s: Syntax) -> Pos {
@@ -130,8 +128,6 @@ pub fn get_pos(s: Syntax) -> Pos {
     HoleSyntax(pos) -> pos
     DepModSyntax(_, _, pos) -> pos
     DepModTypeSyntax(_, _, pos) -> pos
-    RowModSyntax(_, pos) -> pos
-    RowModTypeSyntax(_, pos) -> pos
   }
 }
 
@@ -197,8 +193,6 @@ pub fn pretty_syntax(s: Syntax) -> String {
       <> ")"
     ExFalsoSyntax(a, _) -> "exfalso(" <> pretty_syntax(a) <> ")"
     HoleSyntax(_) -> "_"
-    RowModSyntax(_, _) -> "#package#"
-    RowModTypeSyntax(_, _) -> "#interface#"
     DepModSyntax(_, _, _) -> "#mod#"
     DepModTypeSyntax(_, _, _) -> "#sig#"
   }
@@ -243,8 +237,6 @@ pub type DefType {
 pub type Ctor0 {
   DepMod(Def, Def)
   DepModType(DefType, DefType)
-  RowMod(List(Def))
-  RowModType(List(DefType))
   Meta(Ref(Meta))
   InsertedMeta(Ref(Meta), List(ContextMask))
   Sort(Sort)
@@ -334,8 +326,6 @@ pub fn pretty_term(term: Term) -> String {
       <> pretty_term(e)
     Ctor0(DepMod(_, _), _) -> "#mod#"
     Ctor0(DepModType(_, _), _) -> "#sig#"
-    Ctor0(RowMod(_), _) -> "#package#"
-    Ctor0(RowModType(_), _) -> "#interface#"
     Ctor0(Sort(SetSort), _) -> "Set"
     Ctor0(Sort(KindSort), _) -> "Kind"
     Ctor0(Sort(ModSort), _) -> "Mod"
@@ -397,8 +387,6 @@ pub type Value {
     fn(Value) -> Value,
     Pos,
   )
-  VRowMod(List(#(String, BinderMode, Value, Value)), Pos)
-  VRowModType(List(#(String, BinderMode, Value)), Pos)
   VIdent(String, BinderMode, Level, List(SpineEntry), Pos)
   VMeta(Ref(Meta), Bool, List(SpineEntry), Pos)
   VSort(Sort, Pos)
@@ -425,8 +413,6 @@ pub fn value_pos(v: Value) -> Pos {
   case v {
     VDepMod(_, _, _, _, _, _, _, _, pos) -> pos
     VDepModType(_, _, _, _, _, _, pos) -> pos
-    VRowMod(_, pos) -> pos
-    VRowModType(_, pos) -> pos
     VIdent(_, _, _, spine, pos) ->
       case list.reverse(spine) {
         [] -> pos
@@ -469,8 +455,6 @@ pub fn pretty_value(v: Value) -> String {
   case v {
     VDepMod(_, _, _, _, _, _, _, _, _) -> "#mod#"
     VDepModType(_, _, _, _, _, _, _) -> "#sig#"
-    VRowMod(_, _) -> "#package#"
-    VRowModType(_, _) -> "#interface#"
     VIdent(x, _, _, spine, _) -> list.fold(spine, x, pretty_spine_entry)
     VMeta(ref, _, [], _) ->
       case get(ref) {
@@ -556,22 +540,6 @@ pub fn quote(size: Level, v: Value) -> Term {
         pos,
       )
     }
-    VRowMod(defs, pos) ->
-      Ctor0(
-        RowMod(
-          list.map(defs, fn(def) {
-            Def(def.0, def.1, quote(size, def.2), quote(size, def.3))
-          }),
-        ),
-        pos,
-      )
-    VRowModType(defs, pos) ->
-      Ctor0(
-        RowModType(
-          list.map(defs, fn(def) { DefType(def.0, def.1, quote(size, def.2)) }),
-        ),
-        pos,
-      )
     VIdent(x, mode, lvl, spine, pos) ->
       list.fold(
         spine,

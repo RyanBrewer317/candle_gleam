@@ -9,7 +9,7 @@ fn go() {
   let assert Ok(code) = simplifile.read("./candle/main.cd")
   io.println(code)
   io.println("--")
-  use s <- result.try(parser.parse(code, parser.row_mod()))
+  use s <- result.try(parser.parse(code, parser.dep_mod()))
   // io.println(header.pretty_syntax(s))
   use #(t, ty) <- result.try(elab.infer(elab.empty_ctx, s))
   // io.println(header.pretty_term(t))

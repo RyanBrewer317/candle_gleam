@@ -6,7 +6,7 @@ import header.{
   type SyntaxParam, AppSyntax, CastSyntax, DefSyntax, EqSyntax, ExFalsoSyntax,
   Explicit, FstSyntax, HoleSyntax, IdentSyntax, Implicit, IntersectionSyntax,
   IntersectionTypeSyntax, LambdaSyntax, LetSyntax, ManyMode, NatSyntax,
-  NatTypeSyntax, PiSyntax, Pos, PsiSyntax, ReflSyntax, RowModSyntax, SetSort,
+  NatTypeSyntax, PiSyntax, Pos, PsiSyntax, ReflSyntax, DepModSyntax, SetSort,
   SndSyntax, SortSyntax, SyntaxParam, ZeroMode,
 }
 
@@ -573,7 +573,7 @@ pub fn expr() -> Parser(Syntax) {
       intersection(),
       cast(),
       exfalso(),
-      row_mod(),
+      dep_mod(),
       ident(),
       relevant_but_ignored(),
       hole(),
@@ -705,10 +705,18 @@ fn stmt() -> Parser(DefSyntax) {
   return(DefSyntax(x, mode, t, v, pos))
 }
 
-pub fn row_mod() -> Parser(Syntax) {
+// pub fn row_mod() -> Parser(Syntax) {
+//   use pos <- do(get_pos())
+//   use _ <- do(keyword("package"))
+//   use defs <- do(many0(stmt()))
+//   use _ <- do(keyword("end"))
+//   return(RowModSyntax(defs, pos))
+// }
+
+pub fn dep_mod() -> Parser(Syntax) {
   use pos <- do(get_pos())
-  use _ <- do(keyword("package"))
+  use _ <- do(keyword("mod"))
   use defs <- do(many0(stmt()))
   use _ <- do(keyword("end"))
-  return(RowModSyntax(defs, pos))
+  return(todo)//DepModSyntax(defs, pos))
 }

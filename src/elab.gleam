@@ -11,11 +11,10 @@ import header.{
   FstSyntax, HoleSyntax, Ident, IdentSyntax, Implicit, Index, InsertedMeta,
   Inter, InterT, IntersectionSyntax, IntersectionTypeSyntax, KindSort, Lambda,
   LambdaSyntax, Let, LetSyntax, Level, ManyMode, Meta, ModSort, Nat, NatSyntax,
-  NatT, NatTypeSyntax, Pi, PiSyntax, Psi, PsiSyntax, Refl, ReflSyntax, RowMod,
-  RowModSyntax, RowModType, RowModTypeSyntax, SetSort, Snd, SndSyntax, Solved,
+  NatT, NatTypeSyntax, Pi, PiSyntax, Psi, PsiSyntax, Refl, ReflSyntax, SetSort, Snd, SndSyntax, Solved,
   Sort, SortSyntax, TypeMode, Unsolved, VApp, VCast, VDepMod, VDepModType, VEq,
   VExFalso, VFst, VIdent, VInter, VInterT, VLambda, VMeta, VNat, VNatType, VPi,
-  VPsi, VRefl, VRowMod, VRowModType, VSnd, VSort, ZeroMode, get, inc, lvl_to_idx,
+  VPsi, VRefl, VSnd, VSort, ZeroMode, get, inc, lvl_to_idx,
   new, next_id, pretty_mode, pretty_pos, pretty_term, pretty_value, set,
 }
 
@@ -33,16 +32,6 @@ pub fn force(v: Value) -> Value {
 
 fn erase(t: Value) -> Value {
   case force(t) {
-    VRowMod(defs, pos) ->
-      VRowMod(
-        list.map(defs, fn(def) { #(def.0, def.1, erase(def.2), erase(def.3)) }),
-        pos,
-      )
-    VRowModType(defs, pos) ->
-      VRowModType(
-        list.map(defs, fn(def) { #(def.0, def.1, erase(def.2)) }),
-        pos,
-      )
     VDepMod(x1, mode1, v1, t1, x2, mode2, v2, t2, pos) ->
       VDepMod(
         x1,
@@ -208,24 +197,6 @@ pub fn eval(t: Term, env: List(Value)) -> Value {
         Ok(v) -> v
         Error(_) -> panic as "out-of-scope var during eval"
       }
-    Ctor0(RowMod(defs), pos) -> {
-      let #(_, rev_defs) =
-        list.fold(defs, #(env, []), fn(pair, def) {
-          let #(env, so_far) = pair
-          let t = eval(def.type_, env)
-          let v = eval(def.body, env)
-          #([v, ..env], [#(def.name, def.mode, t, v), ..so_far])
-        })
-      VRowMod(list.reverse(rev_defs), pos)
-    }
-    Ctor0(RowModType(defs), pos) -> {
-      let defs =
-        list.map(defs, fn(def) {
-          let t = eval(def.type_, env)
-          #(def.name, def.mode, t)
-        })
-      VRowModType(defs, pos)
-    }
     Ctor0(DepMod(def1, def2), pos) ->
       VDepMod(
         def1.name,
@@ -367,25 +338,6 @@ fn rename(
   v: Value,
 ) -> Result(Term, String) {
   case force(v) {
-    VRowMod(defs, pos) -> {
-      use defs2 <- result.try(
-        list.try_map(defs, fn(def) {
-          use t <- result.try(rename(meta, pr, def.2))
-          use v <- result.try(rename(meta, pr, def.3))
-          Ok(Def(def.0, def.1, t, v))
-        }),
-      )
-      Ok(Ctor0(RowMod(defs2), pos))
-    }
-    VRowModType(defs, pos) -> {
-      use defs2 <- result.try(
-        list.try_map(defs, fn(def) {
-          use t <- result.try(rename(meta, pr, def.2))
-          Ok(DefType(def.0, def.1, t))
-        }),
-      )
-      Ok(Ctor0(RowModType(defs2), pos))
-    }
     VDepMod(x1, mode1, v1, t1, x2, mode2, v2, t2, pos) -> {
       use v12 <- result.try(rename(meta, pr, v1))
       use t12 <- result.try(rename(meta, pr, t1))
@@ -1191,50 +1143,6 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       let x = fresh_meta(ctx, pos)
       let xt = eval(fresh_meta(ctx, pos), ctx.env)
       Ok(#(x, xt))
-    }
-    RowModSyntax(defs, pos) -> {
-      use #(defs2_rev, defs2t_rev, _) <- result.try(
-        list.try_fold(defs, #([], [], ctx), fn(state, def) {
-          let #(so_far, so_far_t, ctxx) = state
-          use #(xt2, xtt) <- result.try(infer(ctxx, def.type_))
-          use _ <- result.try(case force(xtt) {
-            VSort(_, _) -> Ok(Nil)
-            _ -> Error("type annotation must be a type")
-          })
-          let xt2v = eval(xt2, ctxx.env)
-          use v2 <- result.try(check(ctxx, def.body, xt2v))
-          let v2v = eval(v2, ctxx.env)
-          let ctxx2 =
-            Context(
-              level: ctx.level,
-              types: [xt2v, ..ctxx.types],
-              env: [v2v, ..ctxx.env],
-              scope: [#(def.name, #(def.mode, v2v)), ..ctxx.scope],
-              mask: [ContextMask(has_def: False, mode: def.mode), ..ctxx.mask],
-            )
-          Ok(#(
-            [Def(def.name, def.mode, xt2, v2), ..so_far],
-            [#(def.name, def.mode, xt2v), ..so_far_t],
-            ctxx2,
-          ))
-        }),
-      )
-      let defs3 = list.reverse(defs2_rev)
-      let defs3t = list.reverse(defs2t_rev)
-      Ok(#(Ctor0(RowMod(defs3), pos), VRowModType(defs3t, pos)))
-    }
-    RowModTypeSyntax(defs, pos) -> {
-      use defs2 <- result.try(
-        list.try_map(defs, fn(def) {
-          use #(xt2, xtt) <- result.try(infer(ctx, def.type_))
-          use _ <- result.try(case force(xtt) {
-            VSort(_, _) -> Ok(Nil)
-            _ -> Error("type annotation must be a type")
-          })
-          Ok(DefType(def.name, def.mode, xt2))
-        }),
-      )
-      Ok(#(Ctor0(RowModType(defs2), pos), VSort(ModSort, pos)))
     }
     DepModSyntax(def1, def2, pos) -> {
       use #(xt1, _xtt1) <- result.try(infer(ctx, def1.type_))
