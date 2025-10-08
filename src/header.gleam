@@ -102,8 +102,8 @@ pub type Syntax {
   CastSyntax(Syntax, Syntax, Syntax, pos: Pos)
   ExFalsoSyntax(Syntax, pos: Pos)
   HoleSyntax(pos: Pos)
-  DepModSyntax(DefSyntax, DefSyntax, pos: Pos)
-  DepModTypeSyntax(DefTypeSyntax, DefTypeSyntax, pos: Pos)
+  DepModSyntax(DefSyntax, Syntax, pos: Pos)
+  DepModTypeSyntax(DefTypeSyntax, Syntax, pos: Pos)
 }
 
 pub fn get_pos(s: Syntax) -> Pos {
@@ -235,8 +235,8 @@ pub type DefType {
 }
 
 pub type Ctor0 {
-  DepMod(Def, Def)
-  DepModType(DefType, DefType)
+  DepMod(Def, Term)
+  DepModType(DefType, Term)
   Meta(Ref(Meta))
   InsertedMeta(Ref(Meta), List(ContextMask))
   Sort(Sort)
@@ -367,26 +367,8 @@ pub fn inc(lvl: Level) -> Level {
 }
 
 pub type Value {
-  VDepMod(
-    String,
-    BinderMode,
-    Value,
-    Value,
-    String,
-    BinderMode,
-    fn(Value) -> Value,
-    fn(Value) -> Value,
-    Pos,
-  )
-  VDepModType(
-    String,
-    BinderMode,
-    Value,
-    String,
-    BinderMode,
-    fn(Value) -> Value,
-    Pos,
-  )
+  VDepMod(String, BinderMode, Value, Value, fn(Value) -> Value, Pos)
+  VDepModType(String, BinderMode, Value, fn(Value) -> Value, Pos)
   VIdent(String, BinderMode, Level, List(SpineEntry), Pos)
   VMeta(Ref(Meta), Bool, List(SpineEntry), Pos)
   VSort(Sort, Pos)
@@ -411,8 +393,8 @@ pub type SpineEntry {
 
 pub fn value_pos(v: Value) -> Pos {
   case v {
-    VDepMod(_, _, _, _, _, _, _, _, pos) -> pos
-    VDepModType(_, _, _, _, _, _, pos) -> pos
+    VDepMod(_, _, _, _, _, pos) -> pos
+    VDepModType(_, _, _, _, pos) -> pos
     VIdent(_, _, _, spine, pos) ->
       case list.reverse(spine) {
         [] -> pos
@@ -453,8 +435,8 @@ fn pretty_spine_entry(base: String, s: SpineEntry) -> String {
 
 pub fn pretty_value(v: Value) -> String {
   case v {
-    VDepMod(_, _, _, _, _, _, _, _, _) -> "#mod#"
-    VDepModType(_, _, _, _, _, _, _) -> "#sig#"
+    VDepMod(_, _, _, _, _, _) -> "#mod#"
+    VDepModType(_, _, _, _, _) -> "#sig#"
     VIdent(x, _, _, spine, _) -> list.fold(spine, x, pretty_spine_entry)
     VMeta(ref, _, [], _) ->
       case get(ref) {
@@ -520,22 +502,22 @@ pub fn pretty_value(v: Value) -> String {
 
 pub fn quote(size: Level, v: Value) -> Term {
   case v {
-    VDepMod(x1, mode1, v1, t1, x2, mode2, v2, t2, pos) -> {
+    VDepMod(x1, mode1, v1, t1, rhs, pos) -> {
       let n = VIdent(x1, mode1, size, [], pos)
       Ctor0(
         DepMod(
           Def(x1, mode1, quote(size, v1), quote(size, t1)),
-          Def(x2, mode2, quote(inc(size), v2(n)), quote(inc(size), t2(n))),
+          quote(inc(size), rhs(n)),
         ),
         pos,
       )
     }
-    VDepModType(x1, mode1, v1, x2, mode2, v2, pos) -> {
+    VDepModType(x1, mode1, v1, rhs, pos) -> {
       let n = VIdent(x1, mode1, size, [], pos)
       Ctor0(
         DepModType(
           DefType(x1, mode1, quote(size, v1)),
-          DefType(x2, mode2, quote(inc(size), v2(n))),
+          quote(inc(size), rhs(n)),
         ),
         pos,
       )

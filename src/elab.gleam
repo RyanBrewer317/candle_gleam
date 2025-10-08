@@ -11,11 +11,12 @@ import header.{
   FstSyntax, HoleSyntax, Ident, IdentSyntax, Implicit, Index, InsertedMeta,
   Inter, InterT, IntersectionSyntax, IntersectionTypeSyntax, KindSort, Lambda,
   LambdaSyntax, Let, LetSyntax, Level, ManyMode, Meta, ModSort, Nat, NatSyntax,
-  NatT, NatTypeSyntax, Pi, PiSyntax, Psi, PsiSyntax, Refl, ReflSyntax, SetSort, Snd, SndSyntax, Solved,
-  Sort, SortSyntax, TypeMode, Unsolved, VApp, VCast, VDepMod, VDepModType, VEq,
-  VExFalso, VFst, VIdent, VInter, VInterT, VLambda, VMeta, VNat, VNatType, VPi,
-  VPsi, VRefl, VSnd, VSort, ZeroMode, get, inc, lvl_to_idx,
-  new, next_id, pretty_mode, pretty_pos, pretty_term, pretty_value, set,
+  NatT, NatTypeSyntax, Pi, PiSyntax, Psi, PsiSyntax, Refl, ReflSyntax, SetSort,
+  Snd, SndSyntax, Solved, Sort, SortSyntax, TypeMode, Unsolved, VApp, VCast,
+  VDepMod, VDepModType, VEq, VExFalso, VFst, VIdent, VInter, VInterT, VLambda,
+  VMeta, VNat, VNatType, VPi, VPsi, VRefl, VSnd, VSort, ZeroMode, get, inc,
+  lvl_to_idx, new, next_id, pretty_mode, pretty_pos, pretty_term, pretty_value,
+  set,
 }
 
 pub fn force(v: Value) -> Value {
@@ -32,28 +33,10 @@ pub fn force(v: Value) -> Value {
 
 fn erase(t: Value) -> Value {
   case force(t) {
-    VDepMod(x1, mode1, v1, t1, x2, mode2, v2, t2, pos) ->
-      VDepMod(
-        x1,
-        mode1,
-        erase(v1),
-        erase(t1),
-        x2,
-        mode2,
-        fn(arg) { erase(v2(arg)) },
-        fn(arg) { erase(t2(arg)) },
-        pos,
-      )
-    VDepModType(x1, mode1, t1, x2, mode2, t2, pos) ->
-      VDepModType(
-        x1,
-        mode1,
-        erase(t1),
-        x2,
-        mode2,
-        fn(arg) { erase(t2(arg)) },
-        pos,
-      )
+    VDepMod(x1, mode1, v1, t1, rhs, pos) ->
+      VDepMod(x1, mode1, erase(v1), erase(t1), fn(arg) { erase(rhs(arg)) }, pos)
+    VDepModType(x1, mode1, t1, rhs, pos) ->
+      VDepModType(x1, mode1, erase(t1), fn(arg) { erase(rhs(arg)) }, pos)
     VIdent(x, mode, lvl, spine, pos) ->
       VIdent(x, mode, lvl, erase_spine(spine), pos)
     VMeta(ref, _, spine, pos) -> VMeta(ref, True, spine, pos)
@@ -119,8 +102,11 @@ fn apps(
     [], [] -> foo
     [_, ..env2], [ContextMask(has_def: True, mode: _), ..mask2] ->
       apps(pos, foo, env2, mask2)
-    [v, ..env2], [ContextMask(has_def: False, mode:), ..mask2] ->
+    [v, ..env2], [ContextMask(has_def: False, mode:), ..mask2] -> {
+      echo "apps"
+      echo list.map(env, pretty_value)
       app(pos, mode, Explicit, apps(pos, foo, env2, mask2), v)
+    }
     _, _ ->
       panic as {
         echo list.length(env)
@@ -174,8 +160,10 @@ fn snd(pos: Pos, inter: Value) -> Value {
 fn apply_spine(v: Value, spine: List(SpineEntry)) -> Value {
   case spine {
     [] -> v
-    [VApp(mode, icit, arg, pos), ..rest] ->
+    [VApp(mode, icit, arg, pos), ..rest] -> {
+      echo "apply_spine vapp"
       apply_spine(app(pos, mode, icit, v, arg), rest)
+    }
     [VPsi(arg, pos), ..rest] -> apply_spine(psi(pos, v, arg), rest)
     [VFst(pos), ..rest] -> apply_spine(fst(pos, v), rest)
     [VSnd(pos), ..rest] -> apply_spine(snd(pos, v), rest)
@@ -197,26 +185,21 @@ pub fn eval(t: Term, env: List(Value)) -> Value {
         Ok(v) -> v
         Error(_) -> panic as "out-of-scope var during eval"
       }
-    Ctor0(DepMod(def1, def2), pos) ->
+    Ctor0(DepMod(def1, rest), pos) ->
       VDepMod(
         def1.name,
         def1.mode,
         eval(def1.body, env),
         eval(def1.type_, env),
-        def2.name,
-        def2.mode,
-        fn(arg) { eval(def2.body, [arg, ..env]) },
-        fn(arg) { eval(def2.type_, [arg, ..env]) },
+        fn(arg) { eval(rest, [arg, ..env]) },
         pos,
       )
-    Ctor0(DepModType(def1, def2), pos) ->
+    Ctor0(DepModType(def1, rhs), pos) ->
       VDepModType(
         def1.name,
         def1.mode,
         eval(def1.type_, env),
-        def2.name,
-        def2.mode,
-        fn(arg) { eval(def2.type_, [arg, ..env]) },
+        fn(arg) { eval(rhs, [arg, ..env]) },
         pos,
       )
     Ctor0(Meta(ref), pos) -> VMeta(ref, False, [], pos)
@@ -229,8 +212,10 @@ pub fn eval(t: Term, env: List(Value)) -> Value {
       VPi(x, mode, imp, eval(t, env), fn(arg) { eval(u, [arg, ..env]) }, pos)
     Binder(Lambda(mode, imp), x, e, pos) ->
       VLambda(x, mode, imp, fn(arg) { eval(e, [arg, ..env]) }, pos)
-    Ctor2(App(mode, icit), foo, bar, pos) ->
+    Ctor2(App(mode, icit), foo, bar, pos) -> {
+      echo "eval app"
       app(pos, mode, icit, eval(foo, env), eval(bar, env))
+    }
     Binder(Let(_mode, v), _x, e, _) -> eval(e, [eval(v, env), ..env])
     Ctor0(Nat(n), pos) -> VNat(n, pos)
     Ctor0(NatT, pos) -> VNatType(pos)
@@ -338,22 +323,18 @@ fn rename(
   v: Value,
 ) -> Result(Term, String) {
   case force(v) {
-    VDepMod(x1, mode1, v1, t1, x2, mode2, v2, t2, pos) -> {
+    VDepMod(x1, mode1, v1, t1, rhs, pos) -> {
       use v12 <- result.try(rename(meta, pr, v1))
       use t12 <- result.try(rename(meta, pr, t1))
       let dummy = VIdent(x1, mode1, pr.codomain_size, [], pos)
-      use v22 <- result.try(rename(meta, lift(pr), v2(dummy)))
-      use t22 <- result.try(rename(meta, lift(pr), t2(dummy)))
-      Ok(Ctor0(DepMod(Def(x1, mode1, t12, v12), Def(x2, mode2, t22, v22)), pos))
+      use rhs2 <- result.try(rename(meta, lift(pr), rhs(dummy)))
+      Ok(Ctor0(DepMod(Def(x1, mode1, t12, v12), rhs2), pos))
     }
-    VDepModType(x1, mode1, t1, x2, mode2, t2, pos) -> {
+    VDepModType(x1, mode1, t1, rhs, pos) -> {
       use t12 <- result.try(rename(meta, pr, t1))
       let dummy = VIdent(x1, mode1, pr.codomain_size, [], pos)
-      use t22 <- result.try(rename(meta, lift(pr), t2(dummy)))
-      Ok(Ctor0(
-        DepModType(DefType(x1, mode1, t12), DefType(x2, mode2, t22)),
-        pos,
-      ))
+      use rhs2 <- result.try(rename(meta, lift(pr), rhs(dummy)))
+      Ok(Ctor0(DepModType(DefType(x1, mode1, t12), rhs2), pos))
     }
     VMeta(ref, _, spine, pos) ->
       case get(ref), get(meta) {
@@ -532,10 +513,12 @@ fn unify_helper(lvl: Level, a: Value, b: Value) -> Result(Bool, String) {
     }
     VLambda(x, m, icit, f, pos), b -> {
       let dummy = VIdent(x, m, lvl, [], pos)
+      echo "unify_helper vlambda"
       unify_helper(inc(lvl), f(dummy), app(pos, m, icit, b, dummy))
     }
     a, VLambda(x, m, icit, f, pos) -> {
       let dummy = VIdent(x, m, lvl, [], pos)
+      echo "unify_helper vlambda 2"
       unify_helper(inc(lvl), app(pos, m, icit, a, dummy), f(dummy))
     }
     VIdent(_, _, i, spine1, _), VIdent(_, _, j, spine2, _) ->
@@ -1001,7 +984,10 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
           let p3 = eval(p2, ctx.env)
           let e3 = eval(e2, ctx.env)
           let pi2 = fn(x, t, u) { VPi(x, ManyMode, Explicit, t, u, pos) }
-          let app2 = fn(f, x) { app(pos, TypeMode, Explicit, f, x) }
+          let app2 = fn(f, x) {
+            echo "app2"
+            app(pos, TypeMode, Explicit, f, x)
+          }
           let t2 =
             pi2("_", app2(app2(p3, a), VRefl(a, pos)), fn(_) {
               app2(app2(p3, b), e3)
@@ -1144,39 +1130,27 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
       let xt = eval(fresh_meta(ctx, pos), ctx.env)
       Ok(#(x, xt))
     }
-    DepModSyntax(def1, def2, pos) -> {
+    DepModSyntax(def1, rest, pos) -> {
       use #(xt1, _xtt1) <- result.try(infer(ctx, def1.type_))
       // TODO: check xt1 is a type
       let xt1v = eval(xt1, ctx.env)
       use v11 <- result.try(check(ctx, def1.body, xt1v))
-      let dummy = VIdent(def1.name, def1.mode, ctx.level, [], pos)
       let v12 = eval(v11, ctx.env)
       let ctx2 =
         Context(
           level: inc(ctx.level),
           types: [v12, ..ctx.types],
-          env: [dummy, ..ctx.env],
+          env: [v12, ..ctx.env],
           scope: [#(def1.name, #(def1.mode, v12)), ..ctx.scope],
-          mask: [ContextMask(has_def: False, mode: def1.mode), ..ctx.mask],
+          mask: [ContextMask(has_def: True, mode: def1.mode), ..ctx.mask],
         )
-      use #(xt2, _xtt2) <- result.try(infer(ctx2, def2.type_))
-      // TODO: check if xt2 is a type
-      let xt2v = eval(xt2, ctx2.env)
-      use v21 <- result.try(check(ctx2, def2.body, xt2v))
+      use #(rest2, _rest2t) <- result.try(infer(ctx2, rest))
       Ok(#(
-        Ctor0(
-          DepMod(
-            Def(def1.name, def1.mode, xt1, v11),
-            Def(def2.name, def2.mode, xt2, v21),
-          ),
-          pos,
-        ),
+        Ctor0(DepMod(Def(def1.name, def1.mode, xt1, v11), rest2), pos),
         VDepModType(
           def1.name,
           def1.mode,
           xt1v,
-          def2.name,
-          def2.mode,
           fn(x) {
             let ctx2 =
               Context(
@@ -1184,27 +1158,21 @@ pub fn infer(ctx: Context, s: Syntax) -> Result(#(Term, Value), String) {
                 types: [xt1v, ..ctx.types],
                 env: [x, ..ctx.env],
                 scope: [#(def1.name, #(TypeMode, x)), ..ctx.scope],
-                mask: [ContextMask(has_def: False, mode: TypeMode), ..ctx.mask],
+                mask: [ContextMask(has_def: True, mode: TypeMode), ..ctx.mask],
               )
-            let assert Ok(#(_, t)) = infer(ctx2, def2.body)
+            let assert Ok(#(_, t)) = infer(ctx2, rest)
             t
           },
           pos,
         ),
       ))
     }
-    DepModTypeSyntax(def1, def2, pos) -> {
-      use #(xt1, _xtt1) <- result.try(infer(ctx, def1.type_))
-      use #(xt2, _xtt2) <- result.try(infer(ctx, def2.type_))
+    DepModTypeSyntax(def, rest, pos) -> {
+      use #(deft, _xtt1) <- result.try(infer(ctx, def.type_))
+      use #(rest2, _xtt2) <- result.try(infer(ctx, rest))
       // TODO: check if xt1 and xt2 are types
       Ok(#(
-        Ctor0(
-          DepModType(
-            DefType(def1.name, def1.mode, xt1),
-            DefType(def2.name, def2.mode, xt2),
-          ),
-          pos,
-        ),
+        Ctor0(DepModType(DefType(def.name, def.mode, deft), rest2), pos),
         VSort(ModSort, pos),
       ))
     }

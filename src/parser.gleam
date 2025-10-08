@@ -3,10 +3,10 @@ import gleam/list
 import gleam/string
 import header.{
   type BinderMode, type DefSyntax, type Icity, type Pos, type Syntax,
-  type SyntaxParam, AppSyntax, CastSyntax, DefSyntax, EqSyntax, ExFalsoSyntax,
-  Explicit, FstSyntax, HoleSyntax, IdentSyntax, Implicit, IntersectionSyntax,
-  IntersectionTypeSyntax, LambdaSyntax, LetSyntax, ManyMode, NatSyntax,
-  NatTypeSyntax, PiSyntax, Pos, PsiSyntax, ReflSyntax, DepModSyntax, SetSort,
+  type SyntaxParam, AppSyntax, CastSyntax, DefSyntax, DepModSyntax, EqSyntax,
+  ExFalsoSyntax, Explicit, FstSyntax, HoleSyntax, IdentSyntax, Implicit,
+  IntersectionSyntax, IntersectionTypeSyntax, LambdaSyntax, LetSyntax, ManyMode,
+  NatSyntax, NatTypeSyntax, PiSyntax, Pos, PsiSyntax, ReflSyntax, SetSort,
   SndSyntax, SortSyntax, SyntaxParam, ZeroMode,
 }
 
@@ -718,5 +718,14 @@ pub fn dep_mod() -> Parser(Syntax) {
   use _ <- do(keyword("mod"))
   use defs <- do(many0(stmt()))
   use _ <- do(keyword("end"))
-  return(todo)//DepModSyntax(defs, pos))
+  return(
+    list.fold(list.reverse(defs), IdentSyntax("main", pos), fn(mod, def) {
+      DepModSyntax(
+        DefSyntax(def.name, def.mode, def.type_, def.body, pos),
+        mod,
+        def.pos,
+      )
+    }),
+  )
+  //DepModSyntax(defs, pos))
 }

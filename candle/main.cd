@@ -1,4 +1,4 @@
-package
+mod
 
 // Starting with some useful rewriting functions
 // `leibniz` is the most commonly-used one
